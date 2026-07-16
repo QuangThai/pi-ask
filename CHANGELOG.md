@@ -21,6 +21,11 @@ All notable changes to this package are documented here.
 ### Fixed
 - Removed stray `✓` icon from submit result output (`index.ts`).
 
+## [0.1.6] - 2026-07-16
+
+### Fixed
+- Updated `assets/pi-ask-preview.png` and README transcript example to match 0.1.5 UI (no icons).
+
 ## [Unreleased]
 
 ## [0.1.2] - 2026-07-16

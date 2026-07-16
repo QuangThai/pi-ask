@@ -37,8 +37,8 @@ The tool (`ask_user_question`) makes the LLM pause and show a keyboard-driven di
 ```
 ask_user_question 2 questions (Storage, UI)
   ↓
-✓ Storage: Tool details
-✓ UI: Review tab, Custom answer
+Storage: Tool details
+UI: Review tab, Custom answer
 ```
 
 ## Usage for the LLM
