@@ -65,6 +65,47 @@ When facing ambiguity, the model calls `ask_user_question`. Example:
 }
 ```
 
+### Conditional follow-up example
+
+Use `showWhen` to ask a follow-up only when it is relevant:
+
+```json
+{
+  "questions": [
+    {
+      "id": "stack",
+      "header": "Stack",
+      "question": "What are you building?",
+      "context": "Selecting Backend reveals a database question.",
+      "multiSelect": false,
+      "options": [
+        { "value": "frontend", "label": "Frontend UI" },
+        { "value": "backend", "label": "Backend API", "recommended": true }
+      ]
+    },
+    {
+      "id": "db",
+      "header": "DB",
+      "question": "Which database?",
+      "multiSelect": false,
+      "showWhen": { "questionId": "stack", "equals": "backend" },
+      "options": [
+        { "value": "postgres", "label": "PostgreSQL" },
+        { "value": "sqlite", "label": "SQLite" }
+      ]
+    }
+  ]
+}
+```
+
+| User picks… | Behavior |
+|-------------|----------|
+| **Frontend UI** | DB tab **hidden** — submit only shows `{ stack: frontend }` |
+| **Backend API** | DB tab **appears** — user picks a database; submit shows `{ stack: backend, db: postgres }` |
+| Backend → picks Postgres → reopens and switches to Frontend | DB answer **cleared and removed** from the result; hidden required children never block submit |
+
+> **When to use:** Prefer `showWhen` over separate `ask_user_question` calls. One dialog with a conditional chain is faster and less disruptive than asking multiple times.
+
 **Rules:**
 - `id` must be unique per question; `value` must be unique per option
 - `required` defaults to `true`; set `required: false` to let the user explicitly skip a question
