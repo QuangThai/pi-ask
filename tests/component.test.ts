@@ -270,6 +270,104 @@ describe("QuestionnaireComponent", () => {
     expect(result).toMatchObject({ status: "submitted", answers: [] });
   });
 
+  it("hides a conditional follow-up until the parent matches", () => {
+    let result: unknown;
+    const conditional: Question[] = [
+      {
+        id: "stack",
+        header: "Stack",
+        question: "What are you building?",
+        multiSelect: false,
+        options: [
+          { value: "frontend", label: "Frontend" },
+          { value: "backend", label: "Backend" },
+        ],
+      },
+      {
+        id: "db",
+        header: "DB",
+        question: "Which database?",
+        multiSelect: false,
+        showWhen: { questionId: "stack", equals: "backend" },
+        options: [
+          { value: "postgres", label: "Postgres" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      },
+    ];
+    const component = new QuestionnaireComponent(
+      conditional,
+      tui as never,
+      theme as never,
+      (value) => {
+        result = value;
+      },
+    );
+
+    expect(component.render(80).join("\n")).not.toContain("□ DB");
+
+    // Confirm Frontend — child stays hidden; jumps to Review
+    component.handleInput(KEYS.enter);
+    const afterFrontend = component.render(80).join("\n");
+    expect(afterFrontend).toContain("Review your answers");
+    expect(afterFrontend).not.toContain("DB:");
+
+    component.handleInput(KEYS.enter);
+    expect(result).toMatchObject({
+      status: "submitted",
+      answers: [{ questionId: "stack", selectedValues: ["frontend"] }],
+    });
+  });
+
+  it("shows a conditional follow-up after a matching parent answer", () => {
+    let result: unknown;
+    const conditional: Question[] = [
+      {
+        id: "stack",
+        header: "Stack",
+        question: "What are you building?",
+        multiSelect: false,
+        options: [
+          { value: "frontend", label: "Frontend" },
+          { value: "backend", label: "Backend" },
+        ],
+      },
+      {
+        id: "db",
+        header: "DB",
+        question: "Which database?",
+        multiSelect: false,
+        showWhen: { questionId: "stack", equals: "backend" },
+        options: [
+          { value: "postgres", label: "Postgres" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      },
+    ];
+    const component = new QuestionnaireComponent(
+      conditional,
+      tui as never,
+      theme as never,
+      (value) => {
+        result = value;
+      },
+    );
+
+    component.handleInput(KEYS.down);
+    component.handleInput(KEYS.enter);
+    expect(component.render(80).join("\n")).toContain("Which database?");
+
+    component.handleInput(KEYS.enter);
+    component.handleInput(KEYS.enter);
+    expect(result).toMatchObject({
+      status: "submitted",
+      answers: [
+        { questionId: "stack", selectedValues: ["backend"] },
+        { questionId: "db", selectedValues: ["postgres"] },
+      ],
+    });
+  });
+
   it("wraps tab navigation from the first question to review", () => {
     const component = new QuestionnaireComponent(
       questions,

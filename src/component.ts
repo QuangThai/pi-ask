@@ -14,6 +14,7 @@ import {
   type QuestionnaireState,
   reduceQuestionnaire,
   toResult,
+  visibleQuestionIndices,
 } from "./state.js";
 import { formatInlineText } from "./text.js";
 
@@ -71,7 +72,7 @@ export class QuestionnaireComponent implements Focusable {
   }
 
   private dispatch(action: QuestionnaireAction): void {
-    this.state = reduceQuestionnaire(this.state, action);
+    this.state = reduceQuestionnaire(this.state, action, this.questions);
     this.invalidate();
     this.tui.requestRender();
   }
@@ -84,11 +85,22 @@ export class QuestionnaireComponent implements Focusable {
     return this.getOptions(question).length + 1; // options + Other
   }
 
+  /** Visible question indices plus the Review tab index. */
+  private getNavTabs(): number[] {
+    return [
+      ...visibleQuestionIndices(this.questions, this.state.answers),
+      this.questions.length,
+    ];
+  }
+
   private moveTab(delta: -1 | 1): void {
-    const totalTabs = this.questions.length + 1;
+    const tabs = this.getNavTabs();
+    if (tabs.length === 0) return;
+    const current = tabs.indexOf(this.state.activeTab);
+    const from = current >= 0 ? current : 0;
     this.dispatch({
       type: "goTab",
-      tab: (this.state.activeTab + delta + totalTabs) % totalTabs,
+      tab: tabs[(from + delta + tabs.length) % tabs.length],
     });
   }
 
@@ -237,10 +249,15 @@ export class QuestionnaireComponent implements Focusable {
 
     add(th.fg("accent", "─".repeat(renderWidth)));
 
-    // Tab bar
-    if (this.questions.length > 1) {
+    const visibleIndices = visibleQuestionIndices(
+      this.questions,
+      this.state.answers,
+    );
+
+    // Tab bar — only visible questions (+ Review)
+    if (visibleIndices.length > 1) {
       const parts: string[] = [];
-      for (let i = 0; i < this.questions.length; i++) {
+      for (const i of visibleIndices) {
         const isActive = i === this.state.activeTab;
         const isConfirmed = this.state.answers[i]?.confirmed ?? false;
         const label = ` ${isConfirmed ? "■" : "□"} ${this.questions[i].header} `;
@@ -268,11 +285,11 @@ export class QuestionnaireComponent implements Focusable {
     if (isReview) {
       add(th.fg("accent", th.bold("Review your answers")));
       add("");
-      for (let i = 0; i < this.questions.length; i++) {
+      for (const [reviewIndex, i] of visibleIndices.entries()) {
         const a = this.state.answers[i];
         const qq = this.questions[i];
         addWrapped(
-          th.fg("muted", `${i + 1}. ${qq.header}: ${qq.question}`),
+          th.fg("muted", `${reviewIndex + 1}. ${qq.header}: ${qq.question}`),
           " ",
         );
         if (a) {
@@ -366,7 +383,7 @@ export class QuestionnaireComponent implements Focusable {
     add("");
     if (this.state.editing) {
       add(th.fg("dim", " Enter to save  •  Esc to cancel"));
-    } else if (this.questions.length === 1) {
+    } else if (visibleIndices.length === 1) {
       add(
         th.fg(
           "dim",

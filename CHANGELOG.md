@@ -2,6 +2,13 @@
 
 All notable changes to this package are documented here.
 
+## [0.1.3] - 2026-07-16
+
+### Added
+- Conditional follow-up questions via `showWhen: { questionId, equals }`.
+- Hidden questions are omitted from tabs, Review, and submitted `answers`.
+- Editing a parent answer clears and hides dependent children until rematched.
+
 ## [Unreleased]
 
 ## [0.1.2] - 2026-07-16

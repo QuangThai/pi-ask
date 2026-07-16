@@ -197,6 +197,140 @@ describe("tool integration helpers", () => {
     );
   });
 
+  it("accepts a valid showWhen follow-up", () => {
+    const questions = [
+      {
+        id: "stack",
+        header: "Stack",
+        question: "What are you building?",
+        multiSelect: false,
+        options: [
+          { value: "frontend", label: "Frontend" },
+          { value: "backend", label: "Backend" },
+        ],
+      },
+      {
+        id: "db",
+        header: "DB",
+        question: "Which database?",
+        multiSelect: false,
+        showWhen: { questionId: "stack", equals: "backend" },
+        options: [
+          { value: "postgres", label: "Postgres" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      },
+    ] satisfies Question[];
+    expect(validateQuestions(questions)).toBeUndefined();
+  });
+
+  it("rejects showWhen with an unknown parent id", () => {
+    const questions = [
+      {
+        id: "db",
+        header: "DB",
+        question: "Which database?",
+        multiSelect: false,
+        showWhen: { questionId: "missing", equals: "backend" },
+        options: [
+          { value: "postgres", label: "Postgres" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      },
+    ];
+    expect(validateQuestions(questions)).toBe(
+      "Question showWhen.questionId is unknown: db → missing.",
+    );
+  });
+
+  it("rejects self-referential showWhen", () => {
+    const questions = [
+      {
+        id: "db",
+        header: "DB",
+        question: "Which database?",
+        multiSelect: false,
+        showWhen: { questionId: "db", equals: "postgres" },
+        options: [
+          { value: "postgres", label: "Postgres" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      },
+    ];
+    expect(validateQuestions(questions)).toBe(
+      "Question showWhen cannot reference itself: db.",
+    );
+  });
+
+  it("rejects showWhen when the parent is itself conditional", () => {
+    const questions = [
+      {
+        id: "stack",
+        header: "Stack",
+        question: "What are you building?",
+        multiSelect: false,
+        options: [
+          { value: "frontend", label: "Frontend" },
+          { value: "backend", label: "Backend" },
+        ],
+      },
+      {
+        id: "db",
+        header: "DB",
+        question: "Which database?",
+        multiSelect: false,
+        showWhen: { questionId: "stack", equals: "backend" },
+        options: [
+          { value: "postgres", label: "Postgres" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      },
+      {
+        id: "host",
+        header: "Host",
+        question: "Where is it hosted?",
+        multiSelect: false,
+        showWhen: { questionId: "db", equals: "postgres" },
+        options: [
+          { value: "cloud", label: "Cloud" },
+          { value: "local", label: "Local" },
+        ],
+      },
+    ];
+    expect(validateQuestions(questions)).toBe(
+      "Question showWhen parent must not be conditional: host → db.",
+    );
+  });
+
+  it("rejects showWhen.equals that is not a parent option value", () => {
+    const questions = [
+      {
+        id: "stack",
+        header: "Stack",
+        question: "What are you building?",
+        multiSelect: false,
+        options: [
+          { value: "frontend", label: "Frontend" },
+          { value: "backend", label: "Backend" },
+        ],
+      },
+      {
+        id: "db",
+        header: "DB",
+        question: "Which database?",
+        multiSelect: false,
+        showWhen: { questionId: "stack", equals: "mobile" },
+        options: [
+          { value: "postgres", label: "Postgres" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      },
+    ];
+    expect(validateQuestions(questions)).toBe(
+      "Question showWhen.equals is not an option on parent stack: db.",
+    );
+  });
+
   it("state machine produces valid result for single question", () => {
     const questions = [
       {
@@ -213,7 +347,10 @@ describe("tool integration helpers", () => {
     const state = [
       { type: "select" as const, optionIndex: 0 },
       { type: "confirm" as const },
-    ].reduce(reduceQuestionnaire, createQuestionnaireState(questions));
+    ].reduce(
+      (current, action) => reduceQuestionnaire(current, action, questions),
+      createQuestionnaireState(questions),
+    );
 
     const result = toResult(questions, state);
     expect(result.status).toBe("submitted");

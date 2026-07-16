@@ -22,6 +22,8 @@ export default function (pi: ExtensionAPI) {
       `make decisions, or offer choices. Each question has 2–4 options. ` +
       `Do not include an "Other" option — it is automatic. ` +
       `Set multiSelect: true when multiple options can apply. ` +
+      `Set required: false to allow skipping a question. ` +
+      `Use showWhen: { questionId, equals } for a one-level follow-up that appears only after the parent is confirmed with that option value. ` +
       `The header field is a short tab label (max 12 characters). ` +
       `If you recommend an option, add recommended: true to that option.`,
     promptSnippet:
@@ -29,6 +31,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       `Use ${toolName} for user decisions instead of asking in plain text.`,
       `Review answers are collected in a review tab before submission.`,
+      `Use showWhen for conditional follow-ups; do not nest showWhen deeper than one level.`,
       `When unavailable (print/JSON mode) the tool disables automatically.`,
     ],
     parameters: AskParameters,

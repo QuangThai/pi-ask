@@ -73,49 +73,149 @@ export type QuestionnaireAction =
   | { type: "goTab"; tab: number }
   | { type: "cancelEdit" };
 
-export function createQuestionnaireState(
-  questions: Question[],
-): QuestionnaireState {
+function clearAnswer(answer: AnswerState): AnswerState {
   return {
-    activeTab: 0,
-    answers: questions.map((question) => ({
-      cursorIndex: 0,
-      selectedValues: [],
-      required: question.required !== false,
-      confirmed: false,
-    })),
-    canSubmit: false,
-    editing: undefined,
+    ...answer,
+    cursorIndex: 0,
+    selectedValues: [],
+    customText: undefined,
+    confirmed: false,
   };
 }
 
-function recompute(state: QuestionnaireState): QuestionnaireState {
+/** Whether question at index is visible given current answer state. */
+export function isQuestionVisible(
+  questions: Question[],
+  answers: AnswerState[],
+  index: number,
+): boolean {
+  const question = questions[index];
+  if (!question?.showWhen) return true;
+
+  const parentIndex = questions.findIndex(
+    (candidate) => candidate.id === question.showWhen?.questionId,
+  );
+  if (parentIndex < 0) return false;
+
+  const parentAnswer = answers[parentIndex];
+  const parentQuestion = questions[parentIndex];
+  if (!parentAnswer?.confirmed || !parentQuestion) return false;
+
+  const optionIndex = parentQuestion.options.findIndex(
+    (option) => option.value === question.showWhen?.equals,
+  );
+  if (optionIndex < 0) return false;
+
+  return parentAnswer.selectedValues.includes(String(optionIndex));
+}
+
+export function visibleQuestionIndices(
+  questions: Question[],
+  answers: AnswerState[],
+): number[] {
+  return questions
+    .map((_, index) => index)
+    .filter((index) => isQuestionVisible(questions, answers, index));
+}
+
+function nextVisibleTab(
+  questions: Question[],
+  answers: AnswerState[],
+  fromTab: number,
+): number {
+  for (let index = fromTab + 1; index < questions.length; index++) {
+    if (isQuestionVisible(questions, answers, index)) return index;
+  }
+  return questions.length;
+}
+
+function clampActiveTab(
+  questions: Question[],
+  answers: AnswerState[],
+  activeTab: number,
+): number {
+  if (activeTab >= questions.length) return questions.length;
+  if (isQuestionVisible(questions, answers, activeTab)) return activeTab;
+
+  for (let index = activeTab + 1; index < questions.length; index++) {
+    if (isQuestionVisible(questions, answers, index)) return index;
+  }
+  for (let index = activeTab - 1; index >= 0; index--) {
+    if (isQuestionVisible(questions, answers, index)) return index;
+  }
+  return questions.length;
+}
+
+function syncConditionalState(
+  state: QuestionnaireState,
+  questions: Question[],
+): QuestionnaireState {
+  const answers = state.answers.map((answer, index) => {
+    if (isQuestionVisible(questions, state.answers, index)) return answer;
+    if (
+      answer.selectedValues.length === 0 &&
+      !answer.customText &&
+      !answer.confirmed
+    ) {
+      return answer;
+    }
+    return clearAnswer(answer);
+  });
+
+  const canSubmit = questions.every((_, index) => {
+    if (!isQuestionVisible(questions, answers, index)) return true;
+    return answers[index]?.confirmed === true;
+  });
+
   return {
     ...state,
-    canSubmit: state.answers.every((answer) => answer.confirmed),
+    answers,
+    canSubmit,
+    activeTab: clampActiveTab(questions, answers, state.activeTab),
   };
+}
+
+export function createQuestionnaireState(
+  questions: Question[],
+): QuestionnaireState {
+  return syncConditionalState(
+    {
+      activeTab: 0,
+      answers: questions.map((question) => ({
+        cursorIndex: 0,
+        selectedValues: [],
+        required: question.required !== false,
+        confirmed: false,
+      })),
+      canSubmit: false,
+      editing: undefined,
+    },
+    questions,
+  );
 }
 
 function updateAnswer(
   state: QuestionnaireState,
+  questions: Question[],
   updater: (answer: AnswerState) => AnswerState,
 ): QuestionnaireState {
   const answers = state.answers.map((answer, index) =>
     index === state.activeTab ? updater(answer) : answer,
   );
-  return recompute({ ...state, answers });
+  return syncConditionalState({ ...state, answers }, questions);
 }
 
 export function reduceQuestionnaire(
   state: QuestionnaireState,
   action: QuestionnaireAction,
+  questions: Question[],
 ): QuestionnaireState {
   const answer = state.answers[state.activeTab];
   if (!answer && action.type !== "goTab") return state;
 
   switch (action.type) {
     case "move":
-      return updateAnswer(state, (current) => ({
+      return updateAnswer(state, questions, (current) => ({
         ...current,
         cursorIndex: Math.max(
           0,
@@ -123,7 +223,7 @@ export function reduceQuestionnaire(
         ),
       }));
     case "select":
-      return updateAnswer(state, (current) => ({
+      return updateAnswer(state, questions, (current) => ({
         ...current,
         cursorIndex: action.optionIndex,
         selectedValues: [String(action.optionIndex)],
@@ -132,7 +232,7 @@ export function reduceQuestionnaire(
       }));
     case "toggle": {
       const value = String(action.optionIndex);
-      return updateAnswer(state, (current) => ({
+      return updateAnswer(state, questions, (current) => ({
         ...current,
         cursorIndex: action.optionIndex,
         selectedValues: current.selectedValues.includes(value)
@@ -144,7 +244,7 @@ export function reduceQuestionnaire(
     case "startCustom":
       return { ...state, editing: "custom" };
     case "saveCustom": {
-      const next = updateAnswer(state, (current) => ({
+      const next = updateAnswer(state, questions, (current) => ({
         ...current,
         ...(action.clearSelections !== false ? { selectedValues: [] } : {}),
         customText: normalizeCustomText(action.value),
@@ -155,24 +255,35 @@ export function reduceQuestionnaire(
     case "cancelEdit":
       return { ...state, editing: undefined };
     case "goTab":
-      return {
-        ...state,
-        activeTab: Math.max(0, Math.min(state.answers.length, action.tab)),
-        editing: undefined,
-      };
+      return syncConditionalState(
+        {
+          ...state,
+          activeTab: Math.max(0, Math.min(questions.length, action.tab)),
+          editing: undefined,
+        },
+        questions,
+      );
     case "confirm": {
       const hasAnswer =
         answer.selectedValues.length > 0 || Boolean(answer.customText);
       if (!hasAnswer && answer.required) return state;
-      const next = updateAnswer(state, (current) => ({
+      const confirmed = updateAnswer(state, questions, (current) => ({
         ...current,
         confirmed: true,
       }));
       return {
-        ...next,
-        activeTab: Math.min(next.answers.length, state.activeTab + 1),
+        ...confirmed,
+        activeTab: nextVisibleTab(
+          questions,
+          confirmed.answers,
+          state.activeTab,
+        ),
         editing: undefined,
       };
+    }
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
     }
   }
 }
@@ -182,6 +293,7 @@ export function toResult(
   state: QuestionnaireState,
 ): AskResult {
   const answers: Answer[] = questions.flatMap((question, index) => {
+    if (!isQuestionVisible(questions, state.answers, index)) return [];
     const answer = state.answers[index];
     if (
       !answer?.confirmed ||

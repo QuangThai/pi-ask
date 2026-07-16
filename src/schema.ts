@@ -68,6 +68,27 @@ export const QuestionSchema = Type.Object({
       description: "Whether the user must provide an answer. Defaults to true.",
     }),
   ),
+  showWhen: Type.Optional(
+    Type.Object(
+      {
+        questionId: Type.String({
+          minLength: 1,
+          maxLength: MAX_ID_LENGTH,
+          description: "Parent question id that controls visibility.",
+        }),
+        equals: Type.String({
+          minLength: 1,
+          maxLength: MAX_ID_LENGTH,
+          description:
+            "Parent option value that must be selected for this question to appear.",
+        }),
+      },
+      {
+        description:
+          "Show this question only when the parent is confirmed with the given option value.",
+      },
+    ),
+  ),
   options: Type.Array(OptionSchema, {
     minItems: 2,
     maxItems: 4,
@@ -133,6 +154,9 @@ export function validateQuestions(questions: unknown): string | undefined {
   }
 
   const questionIds = new Set<string>();
+  const optionValuesById = new Map<string, Set<string>>();
+  const hasShowWhenById = new Map<string, boolean>();
+
   for (const [questionIndex, question] of questions.entries()) {
     if (!isRecord(question))
       return `Question ${questionIndex + 1} must be an object.`;
@@ -177,6 +201,26 @@ export function validateQuestions(questions: unknown): string | undefined {
       );
       if (contextError) return contextError;
     }
+    if (question.showWhen !== undefined) {
+      if (!isRecord(question.showWhen)) {
+        return `Question showWhen must be an object: ${id}.`;
+      }
+      const showWhen = question.showWhen;
+      const parentIdError = validateText(
+        showWhen.questionId,
+        `Question showWhen.questionId: ${id}`,
+        MAX_ID_LENGTH,
+        `Question showWhen.questionId must not be blank: ${id}`,
+      );
+      if (parentIdError) return parentIdError;
+      const equalsError = validateText(
+        showWhen.equals,
+        `Question showWhen.equals: ${id}`,
+        MAX_ID_LENGTH,
+        `Question showWhen.equals must not be blank: ${id}`,
+      );
+      if (equalsError) return equalsError;
+    }
     if (!Array.isArray(question.options))
       return `Question options must be an array: ${id}.`;
     if (question.options.length < 2 || question.options.length > 4) {
@@ -184,6 +228,7 @@ export function validateQuestions(questions: unknown): string | undefined {
     }
     if (questionIds.has(id)) return `Duplicate question id: ${id}`;
     questionIds.add(id);
+    hasShowWhenById.set(id, question.showWhen !== undefined);
 
     const optionValues = new Set<string>();
     for (const option of question.options) {
@@ -223,6 +268,28 @@ export function validateQuestions(questions: unknown): string | undefined {
         return `Duplicate option value in ${id}: ${value}`;
       }
       optionValues.add(value);
+    }
+    optionValuesById.set(id, optionValues);
+  }
+
+  for (const question of questions) {
+    if (!isRecord(question) || question.showWhen === undefined) continue;
+    const id = question.id as string;
+    const showWhen = question.showWhen as Record<string, unknown>;
+    const parentId = showWhen.questionId as string;
+    const equals = showWhen.equals as string;
+
+    if (parentId === id) {
+      return `Question showWhen cannot reference itself: ${id}.`;
+    }
+    if (!questionIds.has(parentId)) {
+      return `Question showWhen.questionId is unknown: ${id} → ${parentId}.`;
+    }
+    if (hasShowWhenById.get(parentId)) {
+      return `Question showWhen parent must not be conditional: ${id} → ${parentId}.`;
+    }
+    if (!optionValuesById.get(parentId)?.has(equals)) {
+      return `Question showWhen.equals is not an option on parent ${parentId}: ${id}.`;
     }
   }
 }

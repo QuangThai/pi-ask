@@ -68,6 +68,7 @@ When facing ambiguity, the model calls `ask_user_question`. Example:
 **Rules:**
 - `id` must be unique per question; `value` must be unique per option
 - `required` defaults to `true`; set `required: false` to let the user explicitly skip a question
+- `showWhen: { questionId, equals }` shows a follow-up only after the parent is confirmed with that option `value` (one level deep; Other text never matches)
 - Use `recommended: true` on the best option (shown as a hint; user must select it explicitly)
 - Do **not** include a custom "Other" option — it is automatic
 - `header` ≤ 12 characters
@@ -91,11 +92,13 @@ When facing ambiguity, the model calls `ask_user_question`. Example:
 
 ## Submission guarantees
 
-- An unanswered required question can be visited in Review but cannot be submitted; `Enter` is a no-op until every question is confirmed.
+- An unanswered required question can be visited in Review but cannot be submitted; `Enter` is a no-op until every **visible** question is confirmed.
 - An optional question can be explicitly skipped with `Enter`; it is omitted from the submitted `answers` array.
 - A required multi-select question with no checked option and no Other text cannot be confirmed.
 - Saving blank Other text clears it. If that leaves no answer, the question becomes unconfirmed and blocks Submit.
 - Editing a selected answer or Other text unconfirms that question until the user confirms it again.
+- A `showWhen` follow-up is hidden until its parent is confirmed with the matching option `value`; hidden questions are omitted from tabs, Review, and `answers`.
+- Editing or unconfirming a parent clears and hides dependent children; a hidden required child does not block submit.
 - Multi-select answers are serialized in the original option order, regardless of the order in which options were toggled.
 - A submitted answer may carry `selectedValues` and `customText` together; the LLM transcript preserves both.
 - Terminal exit/abort, user dismissal, invalid input, and unavailable UI have distinct result statuses: `aborted`, `dismissed`, `invalid`, and `unavailable`.
