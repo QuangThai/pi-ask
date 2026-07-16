@@ -7,7 +7,7 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import type { Option, Question } from "./schema.js";
+import { normalizeQuestions, type Option, type Question } from "./schema.js";
 import {
   createQuestionnaireState,
   type QuestionnaireAction,
@@ -49,8 +49,9 @@ export class QuestionnaireComponent implements Focusable {
   }
 
   constructor(questions: Question[], tui: TUILike, theme: Theme, done: DoneFn) {
-    this.questions = questions;
-    this.state = createQuestionnaireState(questions);
+    // Normalize once so recommended options lead and selectedValues indices match.
+    this.questions = normalizeQuestions(questions);
+    this.state = createQuestionnaireState(this.questions);
     this.tui = tui;
     this.theme = theme;
     this.done = done;

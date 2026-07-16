@@ -34,7 +34,10 @@ export const OptionSchema = Type.Object({
     }),
   ),
   recommended: Type.Optional(
-    Type.Boolean({ description: "Marks the recommended option." }),
+    Type.Boolean({
+      description:
+        "Marks the recommended option; always shown first in the list.",
+    }),
   ),
 });
 
@@ -128,6 +131,25 @@ export type Question = Static<typeof QuestionSchema>;
 export type AskParameters = Static<typeof AskParameters>;
 export type Answer = Static<typeof AnswerSchema>;
 export type AskResult = Static<typeof AskResultSchema>;
+
+/** Stable-partition options so recommended entries appear first. */
+export function withRecommendedFirst(options: Option[]): Option[] {
+  const recommended: Option[] = [];
+  const rest: Option[] = [];
+  for (const option of options) {
+    if (option.recommended) recommended.push(option);
+    else rest.push(option);
+  }
+  return recommended.length === 0 ? [...options] : [...recommended, ...rest];
+}
+
+/** Normalize each question so recommended options lead the list. */
+export function normalizeQuestions(questions: Question[]): Question[] {
+  return questions.map((question) => ({
+    ...question,
+    options: withRecommendedFirst(question.options),
+  }));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

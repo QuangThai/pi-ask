@@ -31,7 +31,10 @@ All notable changes to this package are documented here.
 ### Fixed
 - Enforce `showWhen` parent must appear before child in questions array; prevents navigation skipping hidden required follow-ups.
 
-## [Unreleased]
+## [0.1.8] - 2026-07-16
+
+### Changed
+- Options marked `recommended: true` are always shown first (stable partition); indices stay consistent with submitted values.
 
 ## [0.1.2] - 2026-07-16
 

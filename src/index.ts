@@ -25,7 +25,7 @@ export default function (pi: ExtensionAPI) {
       `Set required: false to allow skipping a question. ` +
       `Use showWhen: { questionId, equals } for a one-level follow-up that appears only after the parent is confirmed with that option value. ` +
       `The header field is a short tab label (max 12 characters). ` +
-      `If you recommend an option, add recommended: true to that option.`,
+      `If you recommend an option, add recommended: true to that option — it is shown first.`,
     promptSnippet:
       "ask_user_question: Structured multi‑question UI with review.",
     promptGuidelines: [

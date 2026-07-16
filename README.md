@@ -26,7 +26,7 @@ pi install ./
 The tool (`ask_user_question`) makes the LLM pause and show a keyboard-driven dialog:
 
 - **Questions tab** — each question has a header, optional context, and 2–4 options
-- **Recommended** — options marked `recommended: true` show a `(Recommended)` hint; they are never pre-selected
+- **Recommended** — options marked `recommended: true` are moved to the top and show a `(Recommended)` hint; they are never pre-selected
 - **Other** — pick "Other — add your own answer" to enter free text via the inline editor
 - **Multi-select** — `Space` to toggle, `Enter` to confirm
 - **Review tab** — see all answers before submitting; navigate back to any tab to edit
@@ -110,7 +110,7 @@ Use `showWhen` to ask a follow-up only when it is relevant:
 - `id` must be unique per question; `value` must be unique per option
 - `required` defaults to `true`; set `required: false` to let the user explicitly skip a question
 - `showWhen: { questionId, equals }` shows a follow-up only after the parent is confirmed with that option `value` (one level deep; Other text never matches)
-- Use `recommended: true` on the best option (shown as a hint; user must select it explicitly)
+- Use `recommended: true` on the best option (moved to the top with a hint; user must select it explicitly)
 - Do **not** include a custom "Other" option — it is automatic
 - `header` ≤ 12 characters
 - Free-text Other answers are capped at 4,000 characters; terminal control characters are removed

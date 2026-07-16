@@ -63,6 +63,48 @@ describe("QuestionnaireComponent", () => {
     expect(output).toContain("Submit");
   });
 
+  it("moves recommended option to the top even when declared later", () => {
+    let result: unknown;
+    const unordered: Question[] = [
+      {
+        id: "pick",
+        header: "Pick",
+        question: "Choose one",
+        multiSelect: false,
+        options: [
+          { value: "a", label: "Alpha" },
+          { value: "b", label: "Bravo", recommended: true },
+          { value: "c", label: "Charlie" },
+        ],
+      },
+    ];
+    const component = new QuestionnaireComponent(
+      unordered,
+      tui as never,
+      theme as never,
+      (value) => {
+        result = value;
+      },
+    );
+
+    const lines = component.render(80);
+    const bravo = lines.findIndex((line) => line.includes("Bravo"));
+    const alpha = lines.findIndex((line) => line.includes("Alpha"));
+    const charlie = lines.findIndex((line) => line.includes("Charlie"));
+    expect(bravo).toBeGreaterThan(-1);
+    expect(bravo).toBeLessThan(alpha);
+    expect(alpha).toBeLessThan(charlie);
+    expect(lines[bravo]).toContain("(Recommended)");
+
+    // Cursor starts on first row (recommended); Enter selects + confirms
+    component.handleInput(KEYS.enter);
+    component.handleInput(KEYS.enter); // Review → Submit
+    expect(result).toMatchObject({
+      status: "submitted",
+      answers: [{ questionId: "pick", selectedValues: ["b"] }],
+    });
+  });
+
   it("submits answers after confirming all questions", () => {
     let result: unknown;
     const component = new QuestionnaireComponent(

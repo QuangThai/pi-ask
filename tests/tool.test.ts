@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import registerExtension from "../src/index.js";
 import type { Question } from "../src/schema.js";
-import { validateQuestions } from "../src/schema.js";
+import { validateQuestions, withRecommendedFirst } from "../src/schema.js";
 import {
   createQuestionnaireState,
   reduceQuestionnaire,
@@ -9,6 +9,29 @@ import {
 } from "../src/state.js";
 
 describe("tool integration helpers", () => {
+  it("stable-partitions recommended options to the front", () => {
+    const options = [
+      { value: "a", label: "Alpha" },
+      { value: "b", label: "Bravo", recommended: true },
+      { value: "c", label: "Charlie" },
+      { value: "d", label: "Delta", recommended: true },
+    ];
+    expect(withRecommendedFirst(options).map((o) => o.value)).toEqual([
+      "b",
+      "d",
+      "a",
+      "c",
+    ]);
+    expect(
+      withRecommendedFirst(options.slice(0, 2)).map((o) => o.value),
+    ).toEqual(["b", "a"]);
+    expect(
+      withRecommendedFirst(options.filter((option) => !option.recommended)).map(
+        (option) => option.value,
+      ),
+    ).toEqual(["a", "c"]);
+  });
+
   it("rejects malformed question payloads without throwing", () => {
     expect(() => validateQuestions(undefined as never)).not.toThrow();
     expect(validateQuestions(undefined as never)).toBe(
