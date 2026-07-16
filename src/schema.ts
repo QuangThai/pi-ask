@@ -272,7 +272,8 @@ export function validateQuestions(questions: unknown): string | undefined {
     optionValuesById.set(id, optionValues);
   }
 
-  for (const question of questions) {
+  for (let i = 0; i < questions.length; i++) {
+    const question = questions[i];
     if (!isRecord(question) || question.showWhen === undefined) continue;
     const id = question.id as string;
     const showWhen = question.showWhen as Record<string, unknown>;
@@ -287,6 +288,13 @@ export function validateQuestions(questions: unknown): string | undefined {
     }
     if (hasShowWhenById.get(parentId)) {
       return `Question showWhen parent must not be conditional: ${id} → ${parentId}.`;
+    }
+    // Parent must appear before child in array order
+    const parentIdx = questions.findIndex(
+      (q) => isRecord(q) && q.id === parentId,
+    );
+    if (parentIdx >= i) {
+      return `Question showWhen parent must appear before child: ${parentId} → ${id}.`;
     }
     if (!optionValuesById.get(parentId)?.has(equals)) {
       return `Question showWhen.equals is not an option on parent ${parentId}: ${id}.`;

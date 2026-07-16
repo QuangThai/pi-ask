@@ -331,6 +331,35 @@ describe("tool integration helpers", () => {
     );
   });
 
+  it("rejects showWhen when child appears before parent in array", () => {
+    const questions = [
+      {
+        id: "db",
+        header: "DB",
+        question: "Which database?",
+        multiSelect: false,
+        showWhen: { questionId: "stack", equals: "backend" },
+        options: [
+          { value: "postgres", label: "Postgres" },
+          { value: "sqlite", label: "SQLite" },
+        ],
+      },
+      {
+        id: "stack",
+        header: "Stack",
+        question: "What are you building?",
+        multiSelect: false,
+        options: [
+          { value: "frontend", label: "Frontend" },
+          { value: "backend", label: "Backend" },
+        ],
+      },
+    ] satisfies Question[];
+    expect(validateQuestions(questions)).toBe(
+      "Question showWhen parent must appear before child: stack → db.",
+    );
+  });
+
   it("state machine produces valid result for single question", () => {
     const questions = [
       {

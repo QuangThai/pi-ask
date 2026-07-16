@@ -26,6 +26,11 @@ All notable changes to this package are documented here.
 ### Fixed
 - Updated `assets/pi-ask-preview.png` and README transcript example to match 0.1.5 UI (no icons).
 
+## [0.1.7] - 2026-07-16
+
+### Fixed
+- Enforce `showWhen` parent must appear before child in questions array; prevents navigation skipping hidden required follow-ups.
+
 ## [Unreleased]
 
 ## [0.1.2] - 2026-07-16
