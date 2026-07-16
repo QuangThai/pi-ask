@@ -1,5 +1,5 @@
 {
-  "name": "pi-ask",
+  "name": "@nguyenquangthai/pi-ask",
   "version": "0.1.0",
   "description": "Keyboard-first structured questions with review for Pi Coding Agent.",
   "keywords": [
@@ -10,12 +10,27 @@
   ],
   "type": "module",
   "license": "MIT",
-  "private": true,
+  "author": {
+    "name": "Nguyen Quang Thai",
+    "url": "https://github.com/QuangThai"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QuangThai/pi-ask.git"
+  },
+  "bugs": {
+    "url": "https://github.com/QuangThai/pi-ask/issues"
+  },
+  "homepage": "https://github.com/QuangThai/pi-ask#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "packageManager": "npm@11.6.2",
   "files": [
     "src",
     "README.md",
     "CHANGELOG.md",
+    "SECURITY.md",
     "assets/pi-ask-preview.png",
     "LICENSE"
   ],

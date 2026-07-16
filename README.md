@@ -9,16 +9,17 @@ Inspired by the `AskUserQuestion` tool from Claude Code / OpenCode / Codex CLI.
 ## Install
 
 ```bash
-# Install from a local directory (development)
+# Install from npm (recommended)
+pi install npm:@nguyenquangthai/pi-ask
+
+# Or pin a Git commit/tag
+pi install git:github.com/QuangThai/pi-ask@v0.1.0
+
+# Local development
 pi install ./
-
-# Or install from a Git repository
-pi install git:github.com/your-username/pi-ask
-
-# Or your project's .pi/settings.json
 ```
 
-**Prerequisites:** Pi `>=0.80.7`.
+**Prerequisites:** Pi `>=0.80.7` and Node.js `>=20.6.0`.
 
 ## What it looks like
 
@@ -153,17 +154,11 @@ Test interactively:
 pi -e ./src/index.ts --model sonnet
 ```
 
-## Replacing the old package
+## Support and security
 
-If you previously installed `git:github.com/ghoseb/pi-askuserquestion`:
-
-```bash
-pi remove git:github.com/ghoseb/pi-askuserquestion
-pi install git:github.com/your-username/pi-ask
-```
-
-Both packages register the `ask_user_question` tool — they conflict.
+- Report bugs or request features through [GitHub Issues](https://github.com/QuangThai/pi-ask/issues).
+- See [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
 
 ## License
 
-MIT
+[MIT](LICENSE) © 2026 Nguyen Quang Thai

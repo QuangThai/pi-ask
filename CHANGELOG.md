@@ -2,7 +2,7 @@
 
 All notable changes to this package are documented here.
 
-## [Unreleased]
+## [0.1.0] - 2026-07-16
 
 ### Fixed
 - Review now displays both selected options and an Other answer for multi-select questions.
