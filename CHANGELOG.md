@@ -9,6 +9,13 @@ All notable changes to this package are documented here.
 - Hidden questions are omitted from tabs, Review, and submitted `answers`.
 - Editing a parent answer clears and hides dependent children until rematched.
 
+## [0.1.4] - 2026-07-16
+
+### Changed
+- Removed `[ ]` brackets and `✓`/`*` icons from options; use text color (success = selected) instead.
+- Removed `■`/`□` icons and `✓` from tab bar and Submit; use text color only.
+- Multi-select `Enter` now toggles the current option and confirms (no need for Space + Enter).
+
 ## [Unreleased]
 
 ## [0.1.2] - 2026-07-16

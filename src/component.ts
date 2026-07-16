@@ -189,7 +189,16 @@ export class QuestionnaireComponent implements Focusable {
       }
       if (matchesKey(data, Key.enter)) {
         const ans = this.state.answers[this.state.activeTab];
-        if (ans && (ans.selectedValues.length > 0 || ans.customText)) {
+        if (!ans) return;
+        // Toggle cursor option if not yet selected (Enter = toggle + confirm)
+        if (!ans.selectedValues.includes(String(cursor))) {
+          this.dispatch({ type: "toggle", optionIndex: cursor });
+        }
+        const updated = this.state.answers[this.state.activeTab];
+        if (
+          updated &&
+          (updated.selectedValues.length > 0 || updated.customText)
+        ) {
           this.dispatch({ type: "confirm" });
         } else if (q.required === false) {
           this.dispatch({ type: "confirm" });
@@ -260,7 +269,7 @@ export class QuestionnaireComponent implements Focusable {
       for (const i of visibleIndices) {
         const isActive = i === this.state.activeTab;
         const isConfirmed = this.state.answers[i]?.confirmed ?? false;
-        const label = ` ${isConfirmed ? "■" : "□"} ${this.questions[i].header} `;
+        const label = ` ${this.questions[i].header} `;
         if (isActive) {
           parts.push(th.bg("selectedBg", th.fg("text", label)));
         } else {
@@ -268,7 +277,7 @@ export class QuestionnaireComponent implements Focusable {
         }
       }
       const isSubmit = this.state.activeTab === this.questions.length;
-      const submitLabel = " ✓ Submit ";
+      const submitLabel = " Submit ";
       parts.push(
         isSubmit
           ? th.bg("selectedBg", th.fg("text", submitLabel))
@@ -349,12 +358,11 @@ export class QuestionnaireComponent implements Focusable {
       const selected = ans.selectedValues.includes(String(i));
       const isCursor = cursor === i;
       const prefix = isCursor ? th.fg("accent", "> ") : "  ";
-      const check = selected ? th.fg("success", "✓") : " ";
-      let label = `${prefix}${check} ${isCursor ? th.fg("accent", opt.label) : th.fg("text", opt.label)}`;
-      if (opt.recommended) {
-        label += th.fg("muted", " (Recommended)");
-      }
-      add(label);
+      const labelStyle = selected ? "success" : isCursor ? "accent" : "text";
+      const labelText = opt.recommended
+        ? `${opt.label}${th.fg("muted", " (Recommended)")}`
+        : opt.label;
+      add(`${prefix}${th.fg(labelStyle, labelText)}`);
       if (opt.description) {
         addWrapped(th.fg("muted", opt.description), "    ");
       }
@@ -365,9 +373,13 @@ export class QuestionnaireComponent implements Focusable {
       const isCursor = cursor === opts.length;
       const prefix = isCursor ? th.fg("accent", "> ") : "  ";
       const hasCustom = Boolean(ans.customText);
-      const check = hasCustom ? th.fg("success", "✓") : " ";
-      const label = `${prefix}${check} ${th.fg(isCursor ? "accent" : "muted", "Other — add your own answer")}${hasCustom ? th.fg("text", `: ${formatInlineText(ans.customText ?? "")}`) : ""}`;
-      add(label);
+      const labelStyle = hasCustom ? "success" : isCursor ? "accent" : "muted";
+      const customPreview = hasCustom
+        ? `: ${formatInlineText(ans.customText ?? "")}`
+        : "";
+      add(
+        `${prefix}${th.fg(labelStyle, `Other — add your own answer${customPreview}`)}`,
+      );
     }
 
     // Editor
