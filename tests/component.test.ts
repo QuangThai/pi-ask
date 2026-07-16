@@ -58,8 +58,8 @@ describe("QuestionnaireComponent", () => {
     expect(output).toContain("Tool details");
     expect(output).toContain("Local file");
     expect(output).toContain("Other — add your own answer");
-    expect(output).toContain("[ ] Tool details (Recommended)");
-    expect(output).not.toContain("[✓] Tool details");
+    expect(output).toContain("Tool details (Recommended)");
+    expect(output).not.toContain("✓ Tool details");
     expect(output).toContain("Submit");
   });
 

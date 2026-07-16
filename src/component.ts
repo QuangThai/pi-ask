@@ -349,8 +349,8 @@ export class QuestionnaireComponent implements Focusable {
       const selected = ans.selectedValues.includes(String(i));
       const isCursor = cursor === i;
       const prefix = isCursor ? th.fg("accent", "> ") : "  ";
-      const check = selected ? th.fg("success", "✓") : th.fg("dim", " ");
-      let label = `${prefix}[${check}] ${isCursor ? th.fg("accent", opt.label) : th.fg("text", opt.label)}`;
+      const check = selected ? th.fg("success", "✓") : " ";
+      let label = `${prefix}${check} ${isCursor ? th.fg("accent", opt.label) : th.fg("text", opt.label)}`;
       if (opt.recommended) {
         label += th.fg("muted", " (Recommended)");
       }
@@ -365,8 +365,8 @@ export class QuestionnaireComponent implements Focusable {
       const isCursor = cursor === opts.length;
       const prefix = isCursor ? th.fg("accent", "> ") : "  ";
       const hasCustom = Boolean(ans.customText);
-      const check = hasCustom ? th.fg("success", "✓") : th.fg("dim", " ");
-      const label = `${prefix}[${check}] ${th.fg(isCursor ? "accent" : "muted", "Other — add your own answer")}${hasCustom ? th.fg("text", `: ${formatInlineText(ans.customText ?? "")}`) : ""}`;
+      const check = hasCustom ? th.fg("success", "✓") : " ";
+      const label = `${prefix}${check} ${th.fg(isCursor ? "accent" : "muted", "Other — add your own answer")}${hasCustom ? th.fg("text", `: ${formatInlineText(ans.customText ?? "")}`) : ""}`;
       add(label);
     }
 
