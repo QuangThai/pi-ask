@@ -161,4 +161,4 @@ pi -e ./src/index.ts --model sonnet
 
 ## License
 
-[MIT](LICENSE) © 2026 Nguyen Quang Thai
+[MIT](LICENSE) © 2026 QuangThai

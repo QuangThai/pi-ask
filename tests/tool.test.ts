@@ -63,6 +63,25 @@ describe("tool integration helpers", () => {
     );
   });
 
+  it("rejects newline characters in model-provided display text", () => {
+    const questions = [
+      {
+        id: "q1",
+        header: "Q",
+        question: "Test",
+        multiSelect: false,
+        options: [
+          { value: "a", label: "First\nline" },
+          { value: "b", label: "Second" },
+        ],
+      },
+    ] satisfies Question[];
+
+    expect(validateQuestions(questions)).toBe(
+      "Option label in q1 contains terminal control characters.",
+    );
+  });
+
   it("rejects an invalid question count", () => {
     expect(validateQuestions([])).toBe("Provide between 1 and 4 questions.");
   });
@@ -189,6 +208,84 @@ describe("tool integration helpers", () => {
     expect(result.version).toBe(1);
   });
 
+  it("renders selected values and Other text together in result transcript", () => {
+    let definition:
+      | {
+          renderResult: (...args: never[]) => {
+            render: (width: number) => string[];
+          };
+        }
+      | undefined;
+    registerExtension({
+      registerTool: (tool: typeof definition) => {
+        definition = tool;
+      },
+    } as never);
+
+    const rendered = definition?.renderResult(
+      {
+        details: {
+          version: 1,
+          status: "submitted",
+          answers: [
+            {
+              questionId: "features",
+              selectedValues: ["review"],
+              customText: "Support CSV",
+            },
+          ],
+        },
+        content: [],
+      } as never,
+      {} as never,
+      { fg: (_color: string, text: string) => text } as never,
+      {} as never,
+    );
+
+    const text = rendered?.render(80).join("\n");
+    expect(text).toContain("review");
+    expect(text).toContain("Support CSV");
+  });
+
+  it("renders malformed tool calls defensively", () => {
+    let definition:
+      | {
+          renderCall: (...args: never[]) => {
+            render: (width: number) => string[];
+          };
+        }
+      | undefined;
+    registerExtension({
+      registerTool: (tool: typeof definition) => {
+        definition = tool;
+      },
+    } as never);
+    const theme = {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    };
+
+    expect(() =>
+      definition?.renderCall(null as never, theme as never, {} as never),
+    ).not.toThrow();
+    expect(() =>
+      definition?.renderCall(
+        { questions: {} } as never,
+        theme as never,
+        {} as never,
+      ),
+    ).not.toThrow();
+    const text = definition
+      ?.renderCall(
+        { questions: [{ header: "\u001b[2Junsafe" }] } as never,
+        theme as never,
+        {} as never,
+      )
+      .render(80)
+      .join("\n");
+    expect(text).not.toContain("\u001b");
+  });
+
   it("disables the tool in RPC mode because custom TUI needs a terminal", async () => {
     let definition:
       | {
@@ -298,6 +395,79 @@ describe("tool integration helpers", () => {
     onAbort?.();
     const result = await execution;
     expect(result?.details.status).toBe("aborted");
+  });
+
+  it("settles only once when submit and abort interleave", async () => {
+    let definition:
+      | {
+          execute: (...args: never[]) => Promise<{
+            details: { status: string };
+          }>;
+        }
+      | undefined;
+    let onAbort: (() => void) | undefined;
+    let doneCalls = 0;
+    registerExtension({
+      registerTool: (tool: typeof definition) => {
+        definition = tool;
+      },
+    } as never);
+
+    const result = await definition?.execute(
+      "call-id" as never,
+      {
+        questions: [
+          {
+            id: "race",
+            header: "Race",
+            question: "Submit then abort?",
+            multiSelect: false,
+            options: [
+              { value: "yes", label: "Yes" },
+              { value: "no", label: "No" },
+            ],
+          },
+        ],
+      } as never,
+      {
+        aborted: false,
+        addEventListener: (_event: string, listener: () => void) => {
+          onAbort = listener;
+        },
+        removeEventListener() {},
+      } as never,
+      undefined as never,
+      {
+        mode: "tui",
+        ui: {
+          custom: (
+            factory: (
+              tui: unknown,
+              theme: unknown,
+              kb: unknown,
+              done: (value: unknown) => void,
+            ) => { handleInput: (data: string) => void },
+          ) =>
+            new Promise((resolve) => {
+              const view = factory(
+                { requestRender() {} },
+                {},
+                undefined,
+                (value) => {
+                  doneCalls++;
+                  resolve(value);
+                },
+              );
+              view.handleInput("\r");
+              view.handleInput("\r");
+              onAbort?.();
+            }),
+        },
+      } as never,
+    );
+
+    expect(doneCalls).toBe(1);
+    expect(result?.details.status).toBe("submitted");
   });
 
   it("returns an aborted result before opening the TUI", async () => {

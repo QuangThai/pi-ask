@@ -175,6 +175,25 @@ describe("QuestionnaireComponent", () => {
     expect(component.render(80).join("\n")).toContain("keep this");
   });
 
+  it("renders multiline Other text as a safe inline preview", () => {
+    const component = new QuestionnaireComponent(
+      questions,
+      tui as never,
+      theme as never,
+      () => {},
+    );
+
+    component.handleInput(KEYS.down);
+    component.handleInput(KEYS.down);
+    component.handleInput(KEYS.enter);
+    component.handleInput("first\nsecond");
+    component.handleInput(KEYS.enter);
+
+    const lines = component.render(80);
+    expect(lines.join("\n")).toContain("first ↵ second");
+    expect(lines.some((line) => line.includes("first\nsecond"))).toBe(false);
+  });
+
   it("blocks submit after a confirmed Other answer is cleared", () => {
     let result: unknown;
     const component = new QuestionnaireComponent(

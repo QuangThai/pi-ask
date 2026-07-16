@@ -127,6 +127,22 @@ describe("questionnaire state", () => {
     );
   });
 
+  it("keeps Other text when an option is toggled afterward in multi-select", () => {
+    const state = apply([
+      { type: "select", optionIndex: 0 },
+      { type: "confirm" },
+      { type: "saveCustom", value: "Include export", clearSelections: false },
+      { type: "toggle", optionIndex: 0 },
+      { type: "confirm" },
+    ]);
+
+    expect(toResult(questions, state).answers[1]).toEqual({
+      questionId: "features",
+      selectedValues: ["review"],
+      customText: "Include export",
+    });
+  });
+
   it("clearing a confirmed Other answer unconfirms the question", () => {
     const state = apply([
       { type: "saveCustom", value: "Use SQLite" },

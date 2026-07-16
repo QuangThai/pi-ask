@@ -1,4 +1,5 @@
 import type { Answer, Question } from "./schema.js";
+import { formatInlineText } from "./text.js";
 
 /** Formats submitted answers for the model without discarding multi-select Other text. */
 export function summarizeAnswers(
@@ -15,9 +16,10 @@ export function summarizeAnswers(
           value,
       )
       .join(", ");
-    const parts = [selected, answer.customText].filter((part): part is string =>
-      Boolean(part),
-    );
+    const parts = [
+      selected,
+      answer.customText ? formatInlineText(answer.customText) : undefined,
+    ].filter((part): part is string => Boolean(part));
     return `${header}: ${parts.join("; ")}`;
   });
 }

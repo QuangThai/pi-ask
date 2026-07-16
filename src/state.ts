@@ -136,7 +136,6 @@ export function reduceQuestionnaire(
         selectedValues: current.selectedValues.includes(value)
           ? current.selectedValues.filter((selected) => selected !== value)
           : [...current.selectedValues, value],
-        customText: undefined,
         confirmed: false,
       }));
     }

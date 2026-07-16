@@ -15,6 +15,7 @@ import {
   reduceQuestionnaire,
   toResult,
 } from "./state.js";
+import { formatInlineText } from "./text.js";
 
 export type Theme = {
   fg: (color: string, text: string) => string;
@@ -267,7 +268,10 @@ export class QuestionnaireComponent implements Focusable {
             .map((v) => qq.options[Number(v)]?.label)
             .filter(Boolean)
             .join(", ");
-          const answerText = [labels, a.customText]
+          const answerText = [
+            labels,
+            a.customText ? formatInlineText(a.customText) : undefined,
+          ]
             .filter((part): part is string => Boolean(part))
             .join("; ");
           if (answerText) addWrapped(th.fg("text", `   ${answerText}`), " ");
@@ -329,7 +333,7 @@ export class QuestionnaireComponent implements Focusable {
       const prefix = isCursor ? th.fg("accent", "> ") : "  ";
       const hasCustom = Boolean(ans.customText);
       const check = hasCustom ? th.fg("success", "✓") : th.fg("dim", " ");
-      const label = `${prefix}[${check}] ${th.fg(isCursor ? "accent" : "muted", "Other — add your own answer")}${hasCustom ? th.fg("text", `: ${ans.customText}`) : ""}`;
+      const label = `${prefix}[${check}] ${th.fg(isCursor ? "accent" : "muted", "Other — add your own answer")}${hasCustom ? th.fg("text", `: ${formatInlineText(ans.customText ?? "")}`) : ""}`;
       add(label);
     }
 

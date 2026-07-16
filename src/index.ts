@@ -8,6 +8,7 @@ import {
   type Question,
   validateQuestions,
 } from "./schema.js";
+import { formatInlineText } from "./text.js";
 
 export default function (pi: ExtensionAPI) {
   const toolName = "ask_user_question";
@@ -88,17 +89,23 @@ export default function (pi: ExtensionAPI) {
       // Open the interactive TUI
       const result = await ctx.ui.custom<AskResult | null>(
         (tui, theme, _kb, done) => {
+          let settled = false;
+          const settleOnce = (value: AskResult | null) => {
+            if (settled) return;
+            settled = true;
+            done(value);
+          };
           const component = new QuestionnaireComponent(
             questions,
             tui,
             theme as unknown as Theme,
-            (value) => done(value as AskResult | null),
+            (value) => settleOnce(value as AskResult | null),
           );
 
           // Cleanup on abort
           const onAbort = () => {
             component.dispose();
-            done({ version: 1, status: "aborted", answers: [] });
+            settleOnce({ version: 1, status: "aborted", answers: [] });
           };
           signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -151,9 +158,25 @@ export default function (pi: ExtensionAPI) {
     },
 
     renderCall(args, theme, _context) {
-      const questions = (args.questions ?? []) as Question[];
+      const questions =
+        args &&
+        typeof args === "object" &&
+        Array.isArray((args as { questions?: unknown }).questions)
+          ? ((args as { questions: unknown[] }).questions ?? [])
+          : [];
       const count = questions.length;
-      const headers = questions.map((q) => q.header).join(", ");
+      const headers = questions
+        .map((question) => {
+          if (
+            !question ||
+            typeof question !== "object" ||
+            typeof (question as { header?: unknown }).header !== "string"
+          ) {
+            return "?";
+          }
+          return formatInlineText((question as { header: string }).header);
+        })
+        .join(", ");
       let text =
         theme.fg("toolTitle", theme.bold("ask ")) +
         theme.fg("muted", `${count} question${count !== 1 ? "s" : ""}`);
@@ -183,10 +206,15 @@ export default function (pi: ExtensionAPI) {
           // We don't have access to original question labels here,
           // so render the structured answer compactly
           const lines = details.answers.map((answer) => {
-            const sel = answer.customText
-              ? `(wrote) ${answer.customText}`
-              : answer.selectedValues.join(", ");
-            return `${theme.fg("success", "✓ ")}${theme.fg("accent", `${answer.questionId}: `)}${theme.fg("text", sel)}`;
+            const answerText = [
+              answer.selectedValues.join(", "),
+              answer.customText
+                ? `(wrote) ${formatInlineText(answer.customText)}`
+                : undefined,
+            ]
+              .filter((part): part is string => Boolean(part))
+              .join("; ");
+            return `${theme.fg("success", "✓ ")}${theme.fg("accent", `${formatInlineText(answer.questionId)}: `)}${theme.fg("text", answerText)}`;
           });
           // Build a TruncatedText from joined lines
           const box = {

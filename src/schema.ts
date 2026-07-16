@@ -9,11 +9,7 @@ const MAX_CONTEXT_LENGTH = 4_000;
 function hasTerminalControlCharacters(value: string): boolean {
   for (let index = 0; index < value.length; index++) {
     const code = value.charCodeAt(index);
-    if (
-      code <= 8 ||
-      (code >= 11 && code <= 31) ||
-      (code >= 127 && code <= 159)
-    ) {
+    if (code <= 31 || (code >= 127 && code <= 159)) {
       return true;
     }
   }
