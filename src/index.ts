@@ -219,7 +219,7 @@ export default function (pi: ExtensionAPI) {
                   ]
                     .filter((part): part is string => Boolean(part))
                     .join("; ");
-                  return `${theme.fg("success", "✓ ")}${theme.fg("accent", `${formatInlineText(answer.questionId)}: `)}${theme.fg("text", answerText)}`;
+                  return `${theme.fg("accent", `${formatInlineText(answer.questionId)}: `)}${theme.fg("text", answerText)}`;
                 });
           // Build a TruncatedText from joined lines
           const box = {

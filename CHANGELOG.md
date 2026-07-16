@@ -16,6 +16,11 @@ All notable changes to this package are documented here.
 - Removed `■`/`□` icons and `✓` from tab bar and Submit; use text color only.
 - Multi-select `Enter` now toggles the current option and confirms (no need for Space + Enter).
 
+## [0.1.5] - 2026-07-16
+
+### Fixed
+- Removed stray `✓` icon from submit result output (`index.ts`).
+
 ## [Unreleased]
 
 ## [0.1.2] - 2026-07-16

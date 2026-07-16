@@ -1,6 +1,6 @@
 {
   "name": "@nguyenquangthai/pi-ask",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Keyboard-first structured questions with review for Pi Coding Agent.",
   "keywords": [
     "pi-package",
