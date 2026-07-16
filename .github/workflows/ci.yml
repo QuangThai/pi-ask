@@ -32,4 +32,4 @@ jobs:
           mkdir -p .package-smoke
           npm pack --pack-destination .package-smoke
           npm install --ignore-scripts --omit=peer --prefix .package-smoke/install .package-smoke/*.tgz
-          test -d .package-smoke/install/node_modules/pi-ask
+          test -d .package-smoke/install/node_modules/@nguyenquangthai/pi-ask
