@@ -2,6 +2,14 @@
 
 All notable changes to this package are documented here.
 
+## [Unreleased]
+
+## [0.1.2] - 2026-07-16
+
+### Added
+- Optional questions via `required: false`; users explicitly confirm a skip and omitted answers are not serialized.
+- Clear transcript/result text when every optional question is skipped.
+
 ## [0.1.1] - 2026-07-16
 
 ### Fixed

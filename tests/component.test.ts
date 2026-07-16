@@ -248,6 +248,28 @@ describe("QuestionnaireComponent", () => {
     expect(result).toBeUndefined();
   });
 
+  it("allows an optional question to be skipped and omits it from the result", () => {
+    let result: unknown;
+    const optionalQuestion: Question = {
+      ...questions[0],
+      required: false,
+    };
+    const component = new QuestionnaireComponent(
+      [optionalQuestion],
+      tui as never,
+      theme as never,
+      (value) => {
+        result = value;
+      },
+    );
+
+    component.handleInput(KEYS.enter);
+    expect(component.render(80).join("\n")).toContain("Skipped");
+
+    component.handleInput(KEYS.enter);
+    expect(result).toMatchObject({ status: "submitted", answers: [] });
+  });
+
   it("wraps tab navigation from the first question to review", () => {
     const component = new QuestionnaireComponent(
       questions,

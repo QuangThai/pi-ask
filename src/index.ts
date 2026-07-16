@@ -202,20 +202,22 @@ export default function (pi: ExtensionAPI) {
         case "invalid":
           return new TruncatedText(theme.fg("error", "Invalid input"), 0, 0);
         case "submitted": {
-          // Compact: one line per answer
-          // We don't have access to original question labels here,
-          // so render the structured answer compactly
-          const lines = details.answers.map((answer) => {
-            const answerText = [
-              answer.selectedValues.join(", "),
-              answer.customText
-                ? `(wrote) ${formatInlineText(answer.customText)}`
-                : undefined,
-            ]
-              .filter((part): part is string => Boolean(part))
-              .join("; ");
-            return `${theme.fg("success", "✓ ")}${theme.fg("accent", `${formatInlineText(answer.questionId)}: `)}${theme.fg("text", answerText)}`;
-          });
+          // Compact: one line per answer. A submitted empty array means every
+          // optional question was explicitly skipped.
+          const lines =
+            details.answers.length === 0
+              ? [theme.fg("muted", "All optional questions were skipped.")]
+              : details.answers.map((answer) => {
+                  const answerText = [
+                    answer.selectedValues.join(", "),
+                    answer.customText
+                      ? `(wrote) ${formatInlineText(answer.customText)}`
+                      : undefined,
+                  ]
+                    .filter((part): part is string => Boolean(part))
+                    .join("; ");
+                  return `${theme.fg("success", "✓ ")}${theme.fg("accent", `${formatInlineText(answer.questionId)}: `)}${theme.fg("text", answerText)}`;
+                });
           // Build a TruncatedText from joined lines
           const box = {
             render(_width: number) {

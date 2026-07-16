@@ -161,13 +161,14 @@ describe("tool integration helpers", () => {
     expect(validateQuestions(questions)).toBe("Question id must not be blank.");
   });
 
-  it("accepts valid input", () => {
+  it("accepts an optional question", () => {
     const questions = [
       {
         id: "q1",
         header: "Q",
         question: "Test",
         multiSelect: false,
+        required: false,
         options: [
           { value: "a", label: "A" },
           { value: "b", label: "B" },
@@ -175,6 +176,25 @@ describe("tool integration helpers", () => {
       },
     ] satisfies Question[];
     expect(validateQuestions(questions)).toBeUndefined();
+  });
+
+  it("rejects a non-boolean required flag", () => {
+    const questions = [
+      {
+        id: "q1",
+        header: "Q",
+        question: "Test",
+        multiSelect: false,
+        required: "false",
+        options: [
+          { value: "a", label: "A" },
+          { value: "b", label: "B" },
+        ],
+      },
+    ];
+    expect(validateQuestions(questions)).toBe(
+      "Question required must be a boolean: q1.",
+    );
   });
 
   it("state machine produces valid result for single question", () => {
@@ -245,6 +265,36 @@ describe("tool integration helpers", () => {
     const text = rendered?.render(80).join("\n");
     expect(text).toContain("review");
     expect(text).toContain("Support CSV");
+  });
+
+  it("renders an explicit skipped summary for empty submitted answers", () => {
+    let definition:
+      | {
+          renderResult: (...args: never[]) => {
+            render: (width: number) => string[];
+          };
+        }
+      | undefined;
+    registerExtension({
+      registerTool: (tool: typeof definition) => {
+        definition = tool;
+      },
+    } as never);
+
+    const text = definition
+      ?.renderResult(
+        {
+          details: { version: 1, status: "submitted", answers: [] },
+          content: [],
+        } as never,
+        {} as never,
+        { fg: (_color: string, value: string) => value } as never,
+        {} as never,
+      )
+      .render(80)
+      .join("\n");
+
+    expect(text).toContain("All optional questions were skipped.");
   });
 
   it("renders malformed tool calls defensively", () => {

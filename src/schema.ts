@@ -63,6 +63,11 @@ export const QuestionSchema = Type.Object({
   multiSelect: Type.Boolean({
     description: "Allow more than one selected option.",
   }),
+  required: Type.Optional(
+    Type.Boolean({
+      description: "Whether the user must provide an answer. Defaults to true.",
+    }),
+  ),
   options: Type.Array(OptionSchema, {
     minItems: 2,
     maxItems: 4,
@@ -157,6 +162,12 @@ export function validateQuestions(questions: unknown): string | undefined {
     if (questionError) return questionError;
     if (typeof question.multiSelect !== "boolean")
       return `Question multiSelect must be a boolean: ${id}.`;
+    if (
+      question.required !== undefined &&
+      typeof question.required !== "boolean"
+    ) {
+      return `Question required must be a boolean: ${id}.`;
+    }
     if (question.context !== undefined) {
       const contextError = validateText(
         question.context,

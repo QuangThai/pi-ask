@@ -212,6 +212,18 @@ describe("questionnaire state", () => {
     expect(state.activeTab).toBe(0);
   });
 
+  it("confirms an optional question without an answer", () => {
+    const optionalQuestions: Question[] = [
+      { ...questions[0], required: false },
+    ];
+    const initialState = createQuestionnaireState(optionalQuestions);
+    const state = reduceQuestionnaire(initialState, { type: "confirm" });
+
+    expect(state.answers[0].confirmed).toBe(true);
+    expect(state.activeTab).toBe(1);
+    expect(toResult(optionalQuestions, state).answers).toEqual([]);
+  });
+
   it("navigates between tabs", () => {
     const state = apply([{ type: "goTab", tab: 1 }]);
     expect(state.activeTab).toBe(1);

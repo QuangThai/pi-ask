@@ -6,6 +6,8 @@ export function summarizeAnswers(
   questions: Question[],
   answers: Answer[],
 ): string[] {
+  if (answers.length === 0) return ["All optional questions were skipped."];
+
   return answers.map((answer) => {
     const question = questions.find((item) => item.id === answer.questionId);
     const header = question?.header ?? answer.questionId;

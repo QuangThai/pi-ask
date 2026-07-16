@@ -179,6 +179,8 @@ export class QuestionnaireComponent implements Focusable {
         const ans = this.state.answers[this.state.activeTab];
         if (ans && (ans.selectedValues.length > 0 || ans.customText)) {
           this.dispatch({ type: "confirm" });
+        } else if (q.required === false) {
+          this.dispatch({ type: "confirm" });
         }
         return;
       }
@@ -188,8 +190,18 @@ export class QuestionnaireComponent implements Focusable {
         return;
       }
       if (matchesKey(data, Key.enter)) {
-        this.dispatch({ type: "select", optionIndex: cursor });
-        this.dispatch({ type: "confirm" });
+        const answer = this.state.answers[this.state.activeTab];
+        if (
+          q.required === false &&
+          answer &&
+          answer.selectedValues.length === 0 &&
+          !answer.customText
+        ) {
+          this.dispatch({ type: "confirm" });
+        } else {
+          this.dispatch({ type: "select", optionIndex: cursor });
+          this.dispatch({ type: "confirm" });
+        }
         return;
       }
     }
@@ -274,7 +286,11 @@ export class QuestionnaireComponent implements Focusable {
           ]
             .filter((part): part is string => Boolean(part))
             .join("; ");
-          if (answerText) addWrapped(th.fg("text", `   ${answerText}`), " ");
+          if (answerText) {
+            addWrapped(th.fg("text", `   ${answerText}`), " ");
+          } else if (a.confirmed && qq.required === false) {
+            add(th.fg("muted", "   Skipped"));
+          }
         }
       }
       add("");
@@ -303,7 +319,7 @@ export class QuestionnaireComponent implements Focusable {
     add(
       th.fg(
         "muted",
-        ` ${q.multiSelect ? "Choose any that apply" : "Choose one"}`,
+        ` ${q.required === false ? "Optional — press Enter to skip" : q.multiSelect ? "Choose any that apply" : "Choose one"}`,
       ),
     );
     add("");

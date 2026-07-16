@@ -52,6 +52,7 @@ export interface AnswerState {
   cursorIndex: number;
   selectedValues: string[];
   customText?: string;
+  required: boolean;
   confirmed: boolean;
 }
 
@@ -77,9 +78,10 @@ export function createQuestionnaireState(
 ): QuestionnaireState {
   return {
     activeTab: 0,
-    answers: questions.map(() => ({
+    answers: questions.map((question) => ({
       cursorIndex: 0,
       selectedValues: [],
+      required: question.required !== false,
       confirmed: false,
     })),
     canSubmit: false,
@@ -161,7 +163,7 @@ export function reduceQuestionnaire(
     case "confirm": {
       const hasAnswer =
         answer.selectedValues.length > 0 || Boolean(answer.customText);
-      if (!hasAnswer) return state;
+      if (!hasAnswer && answer.required) return state;
       const next = updateAnswer(state, (current) => ({
         ...current,
         confirmed: true,
@@ -181,7 +183,12 @@ export function toResult(
 ): AskResult {
   const answers: Answer[] = questions.flatMap((question, index) => {
     const answer = state.answers[index];
-    if (!answer?.confirmed) return [];
+    if (
+      !answer?.confirmed ||
+      (answer.selectedValues.length === 0 && !answer.customText)
+    ) {
+      return [];
+    }
     const selectedValues = question.options
       .filter((_option, optionIndex) =>
         answer.selectedValues.includes(String(optionIndex)),

@@ -54,6 +54,7 @@ When facing ambiguity, the model calls `ask_user_question`. Example:
       "question": "How should session state be persisted?",
       "context": "Answers must survive pi /tree and /fork operations.",
       "multiSelect": false,
+      "required": false,
       "options": [
         { "value": "details", "label": "Tool result details", "recommended": true },
         { "value": "file",    "label": "File" },
@@ -66,6 +67,7 @@ When facing ambiguity, the model calls `ask_user_question`. Example:
 
 **Rules:**
 - `id` must be unique per question; `value` must be unique per option
+- `required` defaults to `true`; set `required: false` to let the user explicitly skip a question
 - Use `recommended: true` on the best option (shown as a hint; user must select it explicitly)
 - Do **not** include a custom "Other" option — it is automatic
 - `header` ≤ 12 characters
@@ -76,7 +78,8 @@ When facing ambiguity, the model calls `ask_user_question`. Example:
 | Key | Context | Action |
 |-----|---------|--------|
 | `↑` `↓` | Options list | Move cursor |
-| `Enter` | Single-select option | Confirm |
+| `Enter` | Required single-select option | Select and confirm |
+| `Enter` | Optional question with no answer | Skip and confirm |
 | `Space` | Option row | Select single option / toggle multi-select option |
 | `Enter` | Selected options | Confirm question |
 | `Enter` / `Space` | "Other — add your own answer" | Open inline editor |
@@ -88,8 +91,9 @@ When facing ambiguity, the model calls `ask_user_question`. Example:
 
 ## Submission guarantees
 
-- An unanswered question can be visited in Review but cannot be submitted; `Enter` is a no-op until every question is confirmed.
-- Multi-select with no checked option and no Other text cannot be confirmed.
+- An unanswered required question can be visited in Review but cannot be submitted; `Enter` is a no-op until every question is confirmed.
+- An optional question can be explicitly skipped with `Enter`; it is omitted from the submitted `answers` array.
+- A required multi-select question with no checked option and no Other text cannot be confirmed.
 - Saving blank Other text clears it. If that leaves no answer, the question becomes unconfirmed and blocks Submit.
 - Editing a selected answer or Other text unconfirms that question until the user confirms it again.
 - Multi-select answers are serialized in the original option order, regardless of the order in which options were toggled.

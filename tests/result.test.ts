@@ -35,4 +35,10 @@ describe("summarizeAnswers", () => {
       ]),
     ).toEqual(["missing: legacy"]);
   });
+
+  it("reports when every optional question was skipped", () => {
+    expect(summarizeAnswers(questions, [])).toEqual([
+      "All optional questions were skipped.",
+    ]);
+  });
 });
