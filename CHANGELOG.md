@@ -1,0 +1,16 @@
+# Changelog
+
+All notable changes to this package are documented here.
+
+## [Unreleased]
+
+### Fixed
+- Review now displays both selected options and an Other answer for multi-select questions.
+
+### Security
+- Validate malformed tool payloads before they reach the TUI.
+- Reject terminal control characters in model-provided question text.
+- Bound and sanitize Other text before storing it in the result.
+
+### Added
+- CI verification on Node 20 and 22, including audit and package-install smoke checks.
