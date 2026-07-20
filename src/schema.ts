@@ -63,9 +63,12 @@ export const QuestionSchema = Type.Object({
       description: "Optional evidence or context.",
     }),
   ),
-  multiSelect: Type.Boolean({
-    description: "Allow more than one selected option.",
-  }),
+  multiSelect: Type.Optional(
+    Type.Boolean({
+      default: false,
+      description: "Allow more than one selected option. Defaults to false.",
+    }),
+  ),
   required: Type.Optional(
     Type.Boolean({
       description: "Whether the user must provide an answer. Defaults to true.",
@@ -143,10 +146,11 @@ export function withRecommendedFirst(options: Option[]): Option[] {
   return recommended.length === 0 ? [...options] : [...recommended, ...rest];
 }
 
-/** Normalize each question so recommended options lead the list. */
+/** Normalize questions to apply runtime defaults and lead with recommended options. */
 export function normalizeQuestions(questions: Question[]): Question[] {
   return questions.map((question) => ({
     ...question,
+    multiSelect: question.multiSelect ?? false,
     options: withRecommendedFirst(question.options),
   }));
 }
@@ -206,7 +210,10 @@ export function validateQuestions(questions: unknown): string | undefined {
       `Question text must not be blank: ${id}`,
     );
     if (questionError) return questionError;
-    if (typeof question.multiSelect !== "boolean")
+    if (
+      question.multiSelect !== undefined &&
+      typeof question.multiSelect !== "boolean"
+    )
       return `Question multiSelect must be a boolean: ${id}.`;
     if (
       question.required !== undefined &&

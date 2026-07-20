@@ -2,6 +2,14 @@
 
 All notable changes to this package are documented here.
 
+## [0.1.9] - 2026-07-20
+
+### Fixed
+- `multiSelect` is now optional in the TypeBox schema (`Type.Optional`) with `default: false`.
+- Tool description updated to clarify that `multiSelect` defaults to `false`.
+- Runtime validation now accepts an omitted `multiSelect` flag.
+- `normalizeQuestions` coerces `undefined` → `false` for consistent downstream behavior.
+
 ## [0.1.3] - 2026-07-16
 
 ### Added

@@ -21,7 +21,7 @@ export default function (pi: ExtensionAPI) {
       `Use this tool to clarify ambiguous instructions, get preferences, ` +
       `make decisions, or offer choices. Each question has 2–4 options. ` +
       `Do not include an "Other" option — it is automatic. ` +
-      `Set multiSelect: true when multiple options can apply. ` +
+      `multiSelect defaults to false; set it to true only when users may select multiple options. ` +
       `Set required: false to allow skipping a question. ` +
       `Use showWhen: { questionId, equals } for a one-level follow-up that appears only after the parent is confirmed with that option value. ` +
       `The header field is a short tab label (max 12 characters). ` +

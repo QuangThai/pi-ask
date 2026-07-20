@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import registerExtension from "../src/index.js";
 import type { Question } from "../src/schema.js";
-import { validateQuestions, withRecommendedFirst } from "../src/schema.js";
+import {
+  normalizeQuestions,
+  validateQuestions,
+  withRecommendedFirst,
+} from "../src/schema.js";
 import {
   createQuestionnaireState,
   reduceQuestionnaire,
@@ -40,6 +44,40 @@ describe("tool integration helpers", () => {
     expect(validateQuestions([null] as never)).toBe(
       "Question 1 must be an object.",
     );
+  });
+
+  it("defaults an omitted multiSelect flag to false", () => {
+    const questions = [
+      {
+        id: "scope",
+        header: "Scope",
+        question: "What do you want?",
+        options: [
+          { value: "a", label: "Option A" },
+          { value: "b", label: "Option B" },
+        ],
+      },
+    ] satisfies Question[];
+
+    expect(validateQuestions(questions)).toBeUndefined();
+    expect(normalizeQuestions(questions)[0]?.multiSelect).toBe(false);
+  });
+
+  it("rejects a non-boolean multiSelect flag", () => {
+    expect(
+      validateQuestions([
+        {
+          id: "scope",
+          header: "Scope",
+          question: "What do you want?",
+          multiSelect: "false",
+          options: [
+            { value: "a", label: "Option A" },
+            { value: "b", label: "Option B" },
+          ],
+        },
+      ]),
+    ).toBe("Question multiSelect must be a boolean: scope.");
   });
 
   it("returns invalid instead of throwing for malformed tool parameters", async () => {
