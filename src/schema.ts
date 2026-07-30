@@ -1,6 +1,8 @@
 import { type Static, Type } from "typebox";
 
 export const MAX_CUSTOM_TEXT_LENGTH = 4_000;
+/** Max header length displayed in the TUI tab bar. Longer headers are truncated. */
+export const HEADER_DISPLAY_MAX = 12;
 const MAX_ID_LENGTH = 128;
 const MAX_LABEL_LENGTH = 500;
 const MAX_QUESTION_LENGTH = 2_000;
@@ -49,8 +51,8 @@ export const QuestionSchema = Type.Object({
   }),
   header: Type.String({
     minLength: 1,
-    maxLength: 12,
-    description: "Short tab label.",
+    maxLength: MAX_ID_LENGTH,
+    description: "Short tab label (truncated to ${HEADER_DISPLAY_MAX} chars in TUI).",
   }),
   question: Type.String({
     minLength: 1,
@@ -135,6 +137,32 @@ export type AskParameters = Static<typeof AskParameters>;
 export type Answer = Static<typeof AnswerSchema>;
 export type AskResult = Static<typeof AskResultSchema>;
 
+/**
+ * Truncate a header to HEADER_DISPLAY_MAX characters.
+ * Long headers are silently trimmed so the TUI tab stays clean.
+ */
+export function truncateHeader(header: string): string {
+  if (header.length <= HEADER_DISPLAY_MAX) return header;
+  return header.slice(0, HEADER_DISPLAY_MAX);
+}
+
+/**
+ * Sanitize raw question input before validation:
+ * - Truncate headers to HEADER_DISPLAY_MAX chars
+ * This makes the tool resilient to LLMs that send headers slightly over the limit.
+ */
+export function sanitizeHeaders(questions: unknown): unknown {
+  if (!Array.isArray(questions)) return questions;
+  return questions.map((q) => {
+    if (!q || typeof q !== "object") return q;
+    const record = q as Record<string, unknown>;
+    if (typeof record.header === "string") {
+      return { ...record, header: truncateHeader(record.header) };
+    }
+    return record;
+  });
+}
+
 /** Stable-partition options so recommended entries appear first. */
 export function withRecommendedFirst(options: Option[]): Option[] {
   const recommended: Option[] = [];
@@ -150,6 +178,7 @@ export function withRecommendedFirst(options: Option[]): Option[] {
 export function normalizeQuestions(questions: Question[]): Question[] {
   return questions.map((question) => ({
     ...question,
+    header: truncateHeader(question.header),
     multiSelect: question.multiSelect ?? false,
     options: withRecommendedFirst(question.options),
   }));

@@ -2,6 +2,18 @@
 
 All notable changes to this package are documented here.
 
+## [0.1.10] - 2026-07-30
+
+### Fixed
+- Long headers no longer cause a validation error; gracefully truncated to 12 chars for TUI tabs.
+- TypeBox schema now accepts headers up to 128 chars (was 12) to prevent framework-level rejection.
+
+### Added
+- `sanitizeHeaders()` pre-processes input to truncate headers before validation.
+- `truncateHeader()` utility for consistent header truncation.
+- `HEADER_DISPLAY_MAX` constant (12) for centralised control.
+- Prompt guideline reminding LLM to keep headers under 12 characters.
+
 ## [0.1.9] - 2026-07-20
 
 ### Fixed

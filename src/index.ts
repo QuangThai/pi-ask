@@ -6,6 +6,8 @@ import {
   AskParameters,
   type AskResult,
   type Question,
+  HEADER_DISPLAY_MAX,
+  sanitizeHeaders,
   validateQuestions,
 } from "./schema.js";
 import { formatInlineText } from "./text.js";
@@ -33,6 +35,7 @@ export default function (pi: ExtensionAPI) {
       `Review answers are collected in a review tab before submission.`,
       `Use showWhen for conditional follow-ups; do not nest showWhen deeper than one level.`,
       `When unavailable (print/JSON mode) the tool disables automatically.`,
+      `Keep headers under ${HEADER_DISPLAY_MAX} characters for clean TUI tabs.`,
     ],
     parameters: AskParameters,
 
@@ -42,7 +45,10 @@ export default function (pi: ExtensionAPI) {
         typeof params === "object" && params !== null && "questions" in params
           ? (params as { questions?: unknown }).questions
           : undefined;
-      const validationError = validateQuestions(rawQuestions);
+      // Gracefully truncate long headers before validation so the tool
+      // never rejects valid calls just because a header is slightly over.
+      const sanitized = sanitizeHeaders(rawQuestions);
+      const validationError = validateQuestions(sanitized);
       if (validationError) {
         return {
           content: [{ type: "text", text: `Error: ${validationError}` }],
@@ -54,7 +60,7 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      const questions = rawQuestions as Question[];
+      const questions = sanitized as Question[];
 
       // ctx.ui.custom() requires an interactive terminal TUI; RPC UI helpers do
       // not guarantee a focusable terminal component.
