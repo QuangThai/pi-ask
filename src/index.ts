@@ -5,8 +5,8 @@ import { summarizeAnswers } from "./result.js";
 import {
   AskParameters,
   type AskResult,
-  type Question,
   HEADER_DISPLAY_MAX,
+  type Question,
   sanitizeHeaders,
   validateQuestions,
 } from "./schema.js";

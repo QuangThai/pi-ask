@@ -52,7 +52,7 @@ export const QuestionSchema = Type.Object({
   header: Type.String({
     minLength: 1,
     maxLength: MAX_ID_LENGTH,
-    description: "Short tab label (truncated to ${HEADER_DISPLAY_MAX} chars in TUI).",
+    description: `Short tab label (truncated to ${HEADER_DISPLAY_MAX} chars in TUI).`,
   }),
   question: Type.String({
     minLength: 1,
