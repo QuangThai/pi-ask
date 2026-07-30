@@ -3,3 +3,4 @@ coverage/
 dist/
 *.tgz
 .playwright-mcp/
+package.json.tmp
