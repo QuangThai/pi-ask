@@ -1,7 +1,11 @@
+import { Compile } from "typebox/compile";
 import { describe, expect, it } from "vitest";
 import registerExtension from "../src/index.js";
 import type { Question } from "../src/schema.js";
 import {
+  AskParameters,
+  isNormalizedQuestions,
+  normalizeQuestionArgs,
   normalizeQuestions,
   validateQuestions,
   withRecommendedFirst,
@@ -47,6 +51,7 @@ describe("tool integration helpers", () => {
   });
 
   it("defaults an omitted multiSelect flag to false", () => {
+    // Intentionally untyped: this simulates raw LLM input where the flag is absent.
     const questions = [
       {
         id: "scope",
@@ -57,7 +62,7 @@ describe("tool integration helpers", () => {
           { value: "b", label: "Option B" },
         ],
       },
-    ] satisfies Question[];
+    ];
 
     expect(validateQuestions(questions)).toBeUndefined();
     expect(normalizeQuestions(questions)[0]?.multiSelect).toBe(false);
@@ -783,5 +788,340 @@ describe("tool integration helpers", () => {
     );
 
     expect(result?.details.status).toBe("aborted");
+  });
+});
+
+describe("LLM-malformed input resilience (regression: options missing `value`)", () => {
+  it("prepareArguments derives missing fields so the strict schema passes", () => {
+    // This is the exact shape that previously produced
+    // "Validation failed for tool \"ask_user_question\" ... must have required properties value"
+    // Pi runs prepareArguments() BEFORE schema validation, exactly like this test.
+    const validator = Compile(AskParameters);
+    const args = {
+      questions: [
+        {
+          id: "q1",
+          header: "Style",
+          question: "Which style?",
+          options: [
+            { label: "Minimal", value: "minimal" },
+            { label: "Bold" },
+            { label: "Soft", value: "soft" },
+          ],
+        },
+        {
+          id: "q2",
+          header: "Scope",
+          question: "Scope?",
+          options: [{ label: "All pages" }, { label: "Home only" }],
+        },
+      ],
+    };
+    const prepared = normalizeQuestionArgs(args);
+    expect(prepared.questions[0]?.options.map((o) => o.value)).toEqual([
+      "minimal",
+      "bold",
+      "soft",
+    ]);
+    expect(prepared.questions[1]?.options.map((o) => o.value)).toEqual([
+      "all-pages",
+      "home-only",
+    ]);
+    expect(validator.Check(prepared)).toBe(true);
+  });
+
+  it("prepareArguments wraps a single question object into an array", () => {
+    const prepared = normalizeQuestionArgs({
+      questions: {
+        header: "Scope",
+        question: "Scope?",
+        options: [{ label: "A" }, { label: "B" }],
+      },
+    });
+    expect(prepared.questions).toHaveLength(1);
+    expect(prepared.questions[0]?.id).toBe("question-1");
+    expect(Compile(AskParameters).Check(prepared)).toBe(true);
+  });
+
+  it("prepareArguments drops null placeholders and non-object entries", () => {
+    const prepared = normalizeQuestionArgs({
+      questions: [
+        null,
+        {
+          question: "Real question",
+          options: [null, { label: "A" }, "b", { label: "B" }],
+        },
+      ],
+    });
+    expect(prepared.questions).toHaveLength(1);
+    expect(prepared.questions[0]?.options.map((o) => o.label)).toEqual([
+      "A",
+      "B",
+    ]);
+    expect(Compile(AskParameters).Check(prepared)).toBe(true);
+  });
+
+  it("prepareArguments never throws, even for empty or garbage args", () => {
+    expect(normalizeQuestionArgs(undefined)).toEqual({ questions: [] });
+    expect(normalizeQuestionArgs(null)).toEqual({ questions: [] });
+    expect(normalizeQuestionArgs("junk")).toEqual({ questions: [] });
+    expect(normalizeQuestionArgs({})).toEqual({ questions: [] });
+    expect(Compile(AskParameters).Check(normalizeQuestionArgs(undefined))).toBe(
+      true,
+    );
+  });
+
+  it("normalizes string booleans to real booleans", () => {
+    const normalized = normalizeQuestions([
+      {
+        header: "Q",
+        question: "Pick",
+        multiSelect: "false",
+        required: "no",
+        options: [{ label: "A", recommended: "yes" }, { label: "B" }],
+      },
+    ]);
+    expect(normalized[0]?.multiSelect).toBe(false);
+    expect(normalized[0]?.required).toBe(false);
+    expect(normalized[0]?.options[0]?.recommended).toBe(true);
+  });
+
+  it("derives option values from labels when the model omits them", () => {
+    const questions = [
+      {
+        id: "q1",
+        header: "Style",
+        question: "Which style?",
+        options: [
+          { label: "Yes, ship it now" },
+          { label: "Chọn mẫu tối giản" },
+          { label: "Keep current" },
+        ],
+      },
+    ];
+    const normalized = normalizeQuestions(questions);
+    expect(normalized[0]?.options.map((o) => o.value)).toEqual([
+      "yes-ship-it-now",
+      "chon-mau-toi-gian",
+      "keep-current",
+    ]);
+  });
+
+  it("de-duplicates derived values and avoids explicit values", () => {
+    const questions = [
+      {
+        id: "q1",
+        question: "Pick",
+        options: [
+          { label: "Same", value: "keep" },
+          { label: "Same" },
+          { label: "keep" },
+        ],
+      },
+    ];
+    const normalized = normalizeQuestions(questions);
+    // "keep" is reserved for the explicit value; the derived "same" stays,
+    // and the derived "keep" (from the label) becomes "keep-2".
+    expect(normalized[0]?.options.map((o) => o.value)).toEqual([
+      "keep",
+      "same",
+      "keep-2",
+    ]);
+  });
+
+  it("leaves explicit duplicate values for validation to reject cleanly", () => {
+    const questions = [
+      {
+        id: "q1",
+        question: "Pick",
+        options: [
+          { value: "dup", label: "First" },
+          { value: "dup", label: "Second" },
+        ],
+      },
+    ];
+    expect(validateQuestions(normalizeQuestions(questions))).toBe(
+      "Duplicate option value in q1: dup",
+    );
+  });
+
+  it("falls back to a numbered value for non-Latin labels", () => {
+    const questions = [
+      {
+        id: "q1",
+        question: "Pick",
+        options: [{ label: "はい" }, { label: "いいえ" }],
+      },
+    ];
+    const normalized = normalizeQuestions(questions);
+    expect(normalized[0]?.options.map((o) => o.value)).toEqual([
+      "option-1",
+      "option-2",
+    ]);
+    // Labels are preserved for display.
+    expect(normalized[0]?.options.map((o) => o.label)).toEqual([
+      "はい",
+      "いいえ",
+    ]);
+  });
+
+  it("derives labels from values, and numbered labels when both are missing", () => {
+    const questions = [
+      {
+        id: "q1",
+        question: "Pick",
+        options: [{ value: "dark" }, {}],
+      },
+    ];
+    const normalized = normalizeQuestions(questions);
+    expect(normalized[0]?.options).toEqual([
+      { value: "dark", label: "dark" },
+      { value: "option-2", label: "Option 2" },
+    ]);
+  });
+
+  it("derives question ids, headers, and question text", () => {
+    const normalized = normalizeQuestions([
+      { question: "First question" },
+      { header: "Second" },
+      { question: "Third", header: "Three" },
+    ]);
+    expect(normalized.map((q) => q.id)).toEqual([
+      "question-1",
+      "question-2",
+      "question-3",
+    ]);
+    expect(normalized.map((q) => q.question)).toEqual([
+      "First question",
+      "Second",
+      "Third",
+    ]);
+    expect(normalized.map((q) => q.header)).toEqual([
+      "First questi",
+      "Second",
+      "Three",
+    ]);
+  });
+
+  it("de-duplicates derived question ids against explicit ones", () => {
+    const normalized = normalizeQuestions([
+      { id: "question-2", question: "A" },
+      { question: "B" },
+    ]);
+    expect(normalized.map((q) => q.id)).toEqual(["question-2", "question-2-2"]);
+  });
+
+  it("is idempotent", () => {
+    const raw = [
+      {
+        question: "Pick",
+        options: [{ label: "Alpha" }, { value: "beta" }, { label: "Gamma" }],
+      },
+    ];
+    const once = normalizeQuestions(raw);
+    expect(normalizeQuestions(once)).toEqual(once);
+  });
+
+  it("normalized input always passes validation", () => {
+    const raw = [
+      { question: "Pick", options: [{ label: "A" }, { label: "B" }] },
+      {
+        header: "S",
+        question: "Scope?",
+        options: [{ label: "X" }, { value: "y" }],
+      },
+    ];
+    expect(validateQuestions(normalizeQuestions(raw))).toBeUndefined();
+  });
+
+  it("execute derives missing values instead of returning invalid", async () => {
+    let definition:
+      | {
+          execute: (...args: never[]) => Promise<{
+            details: { status: string };
+          }>;
+        }
+      | undefined;
+    registerExtension({
+      registerTool: (tool: typeof definition) => {
+        definition = tool;
+      },
+      getActiveTools: () => [],
+      setActiveTools: () => {},
+    } as never);
+
+    // Options missing `value` — must reach the TUI branch (unavailable in RPC
+    // mode), never the "invalid" branch.
+    const result = await definition?.execute(
+      "call-id" as never,
+      {
+        questions: [
+          {
+            header: "Style",
+            question: "Which style?",
+            options: [{ label: "Minimal" }, { label: "Bold" }],
+          },
+        ],
+      } as never,
+      undefined as never,
+      undefined as never,
+      { mode: "rpc" } as never,
+    );
+
+    expect(result?.details.status).toBe("unavailable");
+  });
+
+  it("execute does not re-normalize prepareArguments output (blank question stays a clean error)", async () => {
+    let definition:
+      | {
+          execute: (...args: never[]) => Promise<{
+            content?: { text: string }[];
+            details: { status: string };
+          }>;
+        }
+      | undefined;
+    registerExtension({
+      registerTool: (tool: typeof definition) => {
+        definition = tool;
+      },
+      getActiveTools: () => [],
+      setActiveTools: () => {},
+    } as never);
+
+    // Simulate pi's flow: prepareArguments() runs first and normalizes.
+    const prepared = normalizeQuestionArgs({
+      questions: [{ options: [{ label: "A" }, { label: "B" }] }],
+    });
+    expect(isNormalizedQuestions(prepared.questions)).toBe(true);
+
+    const result = await definition?.execute(
+      "call-id" as never,
+      prepared as never,
+      undefined as never,
+      undefined as never,
+      { mode: "rpc" } as never,
+    );
+
+    // Blank question text must surface as a clean error, never be masked
+    // into a derived header by a second normalization pass.
+    expect(result?.details.status).toBe("invalid");
+    expect(result?.content?.[0]?.text).toBe(
+      "Error: Question text must not be blank: question-1",
+    );
+  });
+
+  it("isNormalizedQuestions distinguishes raw from prepared input", () => {
+    const raw = [
+      {
+        header: "A",
+        question: "Q?",
+        options: [{ label: "A" }, { label: "B" }],
+      },
+    ];
+    expect(isNormalizedQuestions(raw)).toBe(false);
+    const prepared = normalizeQuestions(raw);
+    expect(isNormalizedQuestions(prepared)).toBe(true);
+    expect(isNormalizedQuestions([])).toBe(false);
+    expect(isNormalizedQuestions(undefined)).toBe(false);
   });
 });

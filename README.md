@@ -108,11 +108,14 @@ Use `showWhen` to ask a follow-up only when it is relevant:
 
 **Rules:**
 - `id` must be unique per question; `value` must be unique per option
+- `value`, `label`, `id`, and `header` are **required in the public schema**, but the tool registers a `prepareArguments()` hook that derives anything the model omits *before* Pi's validation runs — so LLM calls never hit a hard framework validation error. Missing `value` → slug of the label (e.g. `Chọn mẫu tối giản` → `chon-mau-toi-gian`), missing `id` → `question-N`, missing `question` → the header, missing `header` → the question text (truncated)
+- Providing `value`/`label` explicitly is preferred: `value` is the stable key returned to you, `label` is the text shown to the user
+- A single question/option object is auto-wrapped into an array; `null`/non-object entries are dropped; string booleans (`"false"`, `"no"`, `"yes"`, …) are normalized
 - `required` defaults to `true`; set `required: false` to let the user explicitly skip a question
 - `showWhen: { questionId, equals }` shows a follow-up only after the parent is confirmed with that option `value` (one level deep; Other text never matches)
 - Use `recommended: true` on the best option (moved to the top with a hint; user must select it explicitly)
 - Do **not** include a custom "Other" option — it is automatic
-- `header` ≤ 12 characters
+- `header` ≤ 12 characters (longer headers are truncated, never rejected)
 - Free-text Other answers are capped at 4,000 characters; terminal control characters are removed
 
 ## Key bindings

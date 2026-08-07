@@ -6,8 +6,9 @@ import {
   AskParameters,
   type AskResult,
   HEADER_DISPLAY_MAX,
-  type Question,
-  sanitizeHeaders,
+  isNormalizedQuestions,
+  normalizeQuestionArgs,
+  normalizeQuestions,
   validateQuestions,
 } from "./schema.js";
 import { formatInlineText } from "./text.js";
@@ -23,6 +24,9 @@ export default function (pi: ExtensionAPI) {
       `Use this tool to clarify ambiguous instructions, get preferences, ` +
       `make decisions, or offer choices. Each question has 2–4 options. ` +
       `Do not include an "Other" option — it is automatic. ` +
+      `Every option needs a value (a short stable key that is returned to you, ` +
+      `e.g. "minimal") and a label (the text shown to the user). If you omit a ` +
+      `value it is auto-derived from the label, but providing one is preferred. ` +
       `multiSelect defaults to false; set it to true only when users may select multiple options. ` +
       `Set required: false to allow skipping a question. ` +
       `Use showWhen: { questionId, equals } for a one-level follow-up that appears only after the parent is confirmed with that option value. ` +
@@ -36,19 +40,35 @@ export default function (pi: ExtensionAPI) {
       `Use showWhen for conditional follow-ups; do not nest showWhen deeper than one level.`,
       `When unavailable (print/JSON mode) the tool disables automatically.`,
       `Keep headers under ${HEADER_DISPLAY_MAX} characters for clean TUI tabs.`,
+      `Every option needs both value and label; if value is omitted it is derived from the label.`,
     ],
     parameters: AskParameters,
 
+    /**
+     * Runs BEFORE Pi's framework validates the arguments against AskParameters.
+     * Derives anything the model omitted (option values, labels, ids, headers),
+     * wraps single-object containers, drops null placeholders, and normalizes
+     * boolean flags — so the strict schema never rejects a fixable call with a
+     * raw "Validation failed for tool ..." error. Never throws.
+     */
+    prepareArguments(args) {
+      return normalizeQuestionArgs(args);
+    },
+
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      // Validate every runtime value before it reaches the TUI.
+      // Validate every runtime value before it reaches the TUI. Pi runs
+      // prepareArguments() before schema validation, so in production the
+      // questions arrive already normalized — re-normalizing them would mask
+      // blank `question` text. For direct callers (RPC/SDK/tests) normalize
+      // the raw input here as a safety net.
       const rawQuestions =
         typeof params === "object" && params !== null && "questions" in params
           ? (params as { questions?: unknown }).questions
           : undefined;
-      // Gracefully truncate long headers before validation so the tool
-      // never rejects valid calls just because a header is slightly over.
-      const sanitized = sanitizeHeaders(rawQuestions);
-      const validationError = validateQuestions(sanitized);
+      const questions = isNormalizedQuestions(rawQuestions)
+        ? rawQuestions
+        : normalizeQuestions(rawQuestions);
+      const validationError = validateQuestions(questions);
       if (validationError) {
         return {
           content: [{ type: "text", text: `Error: ${validationError}` }],
@@ -59,8 +79,6 @@ export default function (pi: ExtensionAPI) {
           } satisfies AskResult,
         };
       }
-
-      const questions = sanitized as Question[];
 
       // ctx.ui.custom() requires an interactive terminal TUI; RPC UI helpers do
       // not guarantee a focusable terminal component.

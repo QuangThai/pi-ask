@@ -2,6 +2,23 @@
 
 All notable changes to this package are documented here.
 
+## [0.1.11] - 2026-08-07
+
+### Fixed
+- Root-caused and fixed recurring `Validation failed for tool "ask_user_question" ... must have required properties value` errors. Pi's framework validates tool-call arguments against the TypeBox schema *before* the extension runs, and hard-rejects LLM calls that omit required fields; the raw error was fed back as a tool error result. The fix follows pi's official `prepareArguments` pattern.
+- Registered a `prepareArguments(args)` hook (runs before schema validation) that repairs anything the model omitted or mangled: derives option `value` (slug of the label, de-duplicated), option `label` (value or `Option N`), question `id` (`question-N`), `question` text (from the header) and `header` (truncated); wraps a single question/option object into an array; drops `null`/non-object entries; normalizes string booleans (`"false"`, `"no"`, `"yes"`, …).
+- Public schema now keeps `value`, `label`, `id`, and `header` required (`minLength: 1`) so the model-facing contract stays strict — `prepareArguments` fills them before validation, so required fields never reject real calls. Item counts (2–4 options, 1–4 questions) and field lengths are intentionally not enforced by the schema: over/under-sized payloads reach `validateQuestions()` and return a clean, actionable error instead of a raw framework exception.
+- `execute()` no longer re-normalizes input that already passed through `prepareArguments` (`isNormalizedQuestions`), so a blank `question` surfaces as a clean error instead of being silently filled from a derived header.
+- Tool description and prompt guidelines state the option shape explicitly: every option needs a `value` (stable key) and a `label` (shown text).
+
+### Added
+- `prepareArguments` hook for framework-level repair before validation.
+- `normalizeQuestionArgs()`, `questionsToArray()`, `isNormalizedQuestions()`, `toBoolean()`, `deriveSlug()`, `uniqueString()` utilities.
+- Regression tests: framework path (prepareArguments + strict schema) on the exact reported payload, single-object wrapping, null-entry dropping, string booleans, blank-question clean error, container hygiene, idempotence.
+
+### Verified
+- Edge-case matrix (35 malformed payloads) run through pi 0.84.0's real `validateToolArguments`: 0 framework throws (old pipeline threw on the first case); every fixable mistake is repaired, every unfixable one returns a clean error.
+
 ## [0.1.10] - 2026-07-30
 
 ### Fixed

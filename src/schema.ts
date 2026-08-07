@@ -18,20 +18,36 @@ function hasTerminalControlCharacters(value: string): boolean {
   return false;
 }
 
+/**
+ * Public schemas: strict where the model contract matters, tolerant where
+ * prepareArguments()/normalizeQuestions() can auto-fix.
+ *
+ * Pi's framework validates tool arguments against this schema BEFORE execute()
+ * runs and hard-rejects with a raw "Validation failed for tool ..." error.
+ * The extension therefore registers a prepareArguments() hook (official pi
+ * mechanism) that derives defaults for anything the model omitted BEFORE this
+ * schema is checked, so required fields never reject real calls.
+ *
+ * Remaining tolerance is intentional:
+ * - item counts (2–4 options, 1–4 questions) and field lengths are NOT enforced
+ *   here, so over/under-sized payloads reach validateQuestions() which returns
+ *   a clean, actionable error instead of a raw framework exception.
+ * - `question` text is optional because it can be empty after derivation; the
+ *   extension rejects a blank question with a clean error.
+ */
 export const OptionSchema = Type.Object({
   value: Type.String({
     minLength: 1,
-    maxLength: MAX_ID_LENGTH,
-    description: "Stable value returned to the agent.",
+    description:
+      "Stable value returned to the agent. If omitted, derived from the label.",
   }),
   label: Type.String({
     minLength: 1,
-    maxLength: MAX_LABEL_LENGTH,
-    description: "Concise option shown to the user.",
+    description:
+      "Concise option shown to the user. If omitted, the value (or a numbered fallback) is shown.",
   }),
   description: Type.Optional(
     Type.String({
-      maxLength: MAX_CONTEXT_LENGTH,
       description: "Optional supporting detail.",
     }),
   ),
@@ -46,22 +62,21 @@ export const OptionSchema = Type.Object({
 export const QuestionSchema = Type.Object({
   id: Type.String({
     minLength: 1,
-    maxLength: MAX_ID_LENGTH,
-    description: "Unique stable question identifier.",
+    description:
+      "Unique stable question identifier. If omitted, derived (question-1, question-2, ...).",
   }),
   header: Type.String({
     minLength: 1,
-    maxLength: MAX_ID_LENGTH,
     description: `Short tab label (truncated to ${HEADER_DISPLAY_MAX} chars in TUI).`,
   }),
-  question: Type.String({
-    minLength: 1,
-    maxLength: MAX_QUESTION_LENGTH,
-    description: "Question shown to the user.",
-  }),
+  question: Type.Optional(
+    Type.String({
+      description:
+        "Question shown to the user. If omitted, the header text is used.",
+    }),
+  ),
   context: Type.Optional(
     Type.String({
-      maxLength: MAX_CONTEXT_LENGTH,
       description: "Optional evidence or context.",
     }),
   ),
@@ -79,17 +94,17 @@ export const QuestionSchema = Type.Object({
   showWhen: Type.Optional(
     Type.Object(
       {
-        questionId: Type.String({
-          minLength: 1,
-          maxLength: MAX_ID_LENGTH,
-          description: "Parent question id that controls visibility.",
-        }),
-        equals: Type.String({
-          minLength: 1,
-          maxLength: MAX_ID_LENGTH,
-          description:
-            "Parent option value that must be selected for this question to appear.",
-        }),
+        questionId: Type.Optional(
+          Type.String({
+            description: "Parent question id that controls visibility.",
+          }),
+        ),
+        equals: Type.Optional(
+          Type.String({
+            description:
+              "Parent option value that must be selected for this question to appear.",
+          }),
+        ),
       },
       {
         description:
@@ -98,19 +113,17 @@ export const QuestionSchema = Type.Object({
     ),
   ),
   options: Type.Array(OptionSchema, {
-    minItems: 2,
-    maxItems: 4,
     description: "Two to four choices. Do not include an Other option.",
   }),
 });
 
 export const AskParameters = Type.Object({
-  questions: Type.Array(QuestionSchema, {
-    minItems: 1,
-    maxItems: 4,
-    description:
-      "One to four questions answered in a keyboard-first review flow.",
-  }),
+  questions: Type.Optional(
+    Type.Array(QuestionSchema, {
+      description:
+        "One to four questions answered in a keyboard-first review flow.",
+    }),
+  ),
 });
 
 export const AnswerSchema = Type.Object({
@@ -131,9 +144,31 @@ export const AskResultSchema = Type.Object({
   answers: Type.Array(AnswerSchema),
 });
 
-export type Option = Static<typeof OptionSchema>;
-export type Question = Static<typeof QuestionSchema>;
-export type AskParameters = Static<typeof AskParameters>;
+/** Normalized option shape — `value` and `label` are guaranteed by normalizeQuestions. */
+export interface Option {
+  value: string;
+  label: string;
+  description?: string;
+  recommended?: boolean;
+}
+
+export interface ShowWhen {
+  questionId: string;
+  equals: string;
+}
+
+/** Normalized question shape — required fields are guaranteed by normalizeQuestions. */
+export interface Question {
+  id: string;
+  header: string;
+  question: string;
+  context?: string;
+  multiSelect: boolean;
+  required?: boolean;
+  showWhen?: ShowWhen;
+  options: Option[];
+}
+
 export type Answer = Static<typeof AnswerSchema>;
 export type AskResult = Static<typeof AskResultSchema>;
 
@@ -174,18 +209,228 @@ export function withRecommendedFirst(options: Option[]): Option[] {
   return recommended.length === 0 ? [...options] : [...recommended, ...rest];
 }
 
-/** Normalize questions to apply runtime defaults and lead with recommended options. */
-export function normalizeQuestions(questions: Question[]): Question[] {
-  return questions.map((question) => ({
-    ...question,
-    header: truncateHeader(question.header),
-    multiSelect: question.multiSelect ?? false,
-    options: withRecommendedFirst(question.options),
-  }));
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+/**
+ * Slugify a label into a stable option value. Diacritics are stripped so
+ * Vietnamese/French/etc. labels produce readable keys ("Chọn" -> "chon").
+ */
+function deriveSlug(label: string): string {
+  return label
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_ID_LENGTH);
+}
+
+/** Return a candidate not already in `used`, registering it. */
+function uniqueString(candidate: string, used: Set<string>): string {
+  if (!used.has(candidate)) {
+    used.add(candidate);
+    return candidate;
+  }
+  for (let suffix = 2; ; suffix++) {
+    const next = `${candidate}-${suffix}`;
+    if (!used.has(next)) {
+      used.add(next);
+      return next;
+    }
+  }
+}
+
+/**
+ * Lenient boolean parsing for LLM output. Pi's own coercion already handles
+ * "true"/"false"/"1"/"0"; this additionally accepts "yes"/"no"/"on"/"off"
+ * and rejects everything else so a garbage flag can never fail schema
+ * validation.
+ */
+function toBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return undefined;
+  }
+  if (typeof value === "string") {
+    switch (value.trim().toLowerCase()) {
+      case "true":
+      case "yes":
+      case "on":
+      case "1":
+        return true;
+      case "false":
+      case "no":
+      case "off":
+      case "0":
+        return false;
+      default:
+        return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Normalize raw (possibly LLM-malformed) questions into the runtime shape.
+ *
+ * Container hygiene:
+ * - a single question object instead of an array is wrapped: [obj]
+ * - null/undefined/missing containers become []
+ * - non-object entries (null placeholders, strings, numbers) are dropped
+ *
+ * Everything the model might forget is derived instead of rejected:
+ * - missing option `value` -> slug of the label (or `option-N`), de-duplicated
+ * - missing option `label` -> the value (or `Option N`)
+ * - missing question `id` -> `question-N`, de-duplicated
+ * - missing `question` text -> the header
+ * - missing `header` -> the question text, truncated
+ * - `multiSelect` defaults to false; non-boolean flags are dropped
+ * - headers are truncated to fit the tab bar
+ *
+ * Truly unfixable input (no options, blank question, duplicate explicit ids or
+ * values, broken showWhen) is left intact for validateQuestions() to reject
+ * with a clean, actionable error.
+ */
+export function normalizeQuestions(input: unknown): Question[] {
+  if (!Array.isArray(input)) return [];
+
+  // Reserve explicit ids first so derived ids never collide with them.
+  const usedQuestionIds = new Set<string>();
+  for (const rawQuestion of input) {
+    const record = isRecord(rawQuestion) ? rawQuestion : {};
+    const rawId = typeof record.id === "string" ? record.id.trim() : "";
+    if (rawId && !usedQuestionIds.has(rawId)) usedQuestionIds.add(rawId);
+  }
+
+  return input.map((rawQuestion, questionIndex) => {
+    const q = isRecord(rawQuestion) ? rawQuestion : {};
+    const rawId = typeof q.id === "string" ? q.id.trim() : "";
+    const id =
+      rawId || uniqueString(`question-${questionIndex + 1}`, usedQuestionIds);
+
+    const rawQuestionText =
+      typeof q.question === "string" ? q.question.trim() : "";
+    const rawHeader = typeof q.header === "string" ? q.header.trim() : "";
+    const question = rawQuestionText || rawHeader;
+    const header = truncateHeader(rawHeader || rawQuestionText || id);
+
+    // Container hygiene for options: wrap a single object, drop non-objects.
+    const rawOptions = isRecord(q.options)
+      ? [q.options]
+      : Array.isArray(q.options)
+        ? q.options.filter(isRecord)
+        : [];
+    // Reserve explicit option values first so derived values never collide.
+    const usedOptionValues = new Set<string>();
+    for (const rawOption of rawOptions) {
+      const rawValue =
+        typeof rawOption.value === "string" ? rawOption.value.trim() : "";
+      if (rawValue && !usedOptionValues.has(rawValue)) {
+        usedOptionValues.add(rawValue);
+      }
+    }
+    const options: Option[] = rawOptions.map((rawOption, optionIndex) => {
+      const rawValue =
+        typeof rawOption.value === "string" ? rawOption.value.trim() : "";
+      const rawLabel =
+        typeof rawOption.label === "string" ? rawOption.label.trim() : "";
+      const label = rawLabel || rawValue || `Option ${optionIndex + 1}`;
+      const value =
+        rawValue ||
+        uniqueString(
+          deriveSlug(label) || `option-${optionIndex + 1}`,
+          usedOptionValues,
+        );
+      return {
+        value,
+        label,
+        ...(typeof rawOption.description === "string" && rawOption.description
+          ? { description: rawOption.description }
+          : {}),
+        ...(toBoolean(rawOption.recommended) !== undefined
+          ? { recommended: toBoolean(rawOption.recommended) as boolean }
+          : {}),
+      };
+    });
+
+    return {
+      id,
+      header,
+      question,
+      ...(typeof q.context === "string" && q.context
+        ? { context: q.context }
+        : {}),
+      multiSelect: toBoolean(q.multiSelect) ?? false,
+      ...(toBoolean(q.required) !== undefined
+        ? { required: toBoolean(q.required) as boolean }
+        : {}),
+      ...(isRecord(q.showWhen)
+        ? { showWhen: q.showWhen as unknown as ShowWhen }
+        : {}),
+      options: withRecommendedFirst(options),
+    };
+  });
+}
+
+/**
+ * Normalize the top-level `questions` container so it is always an array of
+ * question records (see normalizeQuestions). Missing/malformed containers
+ * become [] so the extension can reject with a clean, actionable error
+ * instead of Pi's raw framework validation failure.
+ */
+export function questionsToArray(input: unknown): unknown[] {
+  if (Array.isArray(input)) return input.filter(isRecord);
+  if (isRecord(input)) return [input];
+  return [];
+}
+
+/**
+ * Normalize full tool-call arguments for the `prepareArguments` hook.
+ * Runs BEFORE Pi's schema validation, so every fixable LLM mistake is already
+ * repaired by the time the strict schema is checked. Never throws.
+ */
+export function normalizeQuestionArgs(args: unknown): {
+  questions: Question[];
+} {
+  if (args && typeof args === "object" && !Array.isArray(args)) {
+    const record = args as Record<string, unknown>;
+    return {
+      ...record,
+      questions: normalizeQuestions(questionsToArray(record.questions)),
+    };
+  }
+  return { questions: [] };
+}
+
+/**
+ * Detect questions that already went through normalizeQuestions()/prepareArguments().
+ * Lets execute() skip re-normalization so prepareArguments semantics are
+ * preserved exactly (e.g. a blank `question` stays blank and is rejected with
+ * a clean error instead of being silently filled from a derived header).
+ */
+export function isNormalizedQuestions(input: unknown): input is Question[] {
+  if (!Array.isArray(input) || input.length === 0) return false;
+  return input.every((raw) => {
+    if (!isRecord(raw)) return false;
+    if (typeof raw.id !== "string" || raw.id.trim() === "") return false;
+    if (typeof raw.header !== "string" || raw.header.trim() === "")
+      return false;
+    if (typeof raw.question !== "string") return false;
+    if (typeof raw.multiSelect !== "boolean") return false;
+    if (!Array.isArray(raw.options)) return false;
+    return raw.options.every(
+      (option) =>
+        isRecord(option) &&
+        typeof option.value === "string" &&
+        option.value.trim() !== "" &&
+        typeof option.label === "string" &&
+        option.label.trim() !== "",
+    );
+  });
 }
 
 function validateText(
