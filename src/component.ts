@@ -123,6 +123,9 @@ export class QuestionnaireComponent implements Focusable {
           clearSelections: !this.questions[this.state.activeTab]?.multiSelect,
         });
         this.editor.setText("");
+        // Single Enter: save + confirm + advance. A blank save leaves no
+        // answer, so confirm() is a no-op and the user stays on the tab.
+        this.dispatch({ type: "confirm" });
         return;
       }
       this.editor.handleInput(data);
@@ -208,7 +211,9 @@ export class QuestionnaireComponent implements Focusable {
       }
     } else {
       if (matchesKey(data, Key.space)) {
+        // Pick & go: choosing one option confirms the tab and advances.
         this.dispatch({ type: "select", optionIndex: cursor });
+        this.dispatch({ type: "confirm" });
         return;
       }
       if (matchesKey(data, Key.enter)) {
@@ -346,7 +351,7 @@ export class QuestionnaireComponent implements Focusable {
     add(
       th.fg(
         "muted",
-        ` ${q.required === false ? "Optional — press Enter to skip" : q.multiSelect ? "Choose any that apply" : "Choose one"}`,
+        ` ${q.required === false ? "Optional — press Enter to skip" : q.multiSelect ? "Choose any that apply — Enter when done" : "Choose one — Space or Enter to continue"}`,
       ),
     );
     add("");
@@ -395,19 +400,23 @@ export class QuestionnaireComponent implements Focusable {
 
     add("");
     if (this.state.editing) {
-      add(th.fg("dim", " Enter to save  •  Esc to cancel"));
+      add(th.fg("dim", " Enter to save & continue  •  Esc to cancel"));
     } else if (visibleIndices.length === 1) {
       add(
         th.fg(
           "dim",
-          " ↑↓ navigate  •  Space select/toggle  •  Enter confirm  •  Esc dismiss",
+          q.multiSelect
+            ? " ↑↓ navigate  •  Space toggle  •  Enter confirm  •  Esc dismiss"
+            : " ↑↓ navigate  •  Space/Enter choose & continue  •  Esc dismiss",
         ),
       );
     } else {
       add(
         th.fg(
           "dim",
-          " ↑↓ navigate  •  Space select/toggle  •  Enter confirm  •  ←→/Tab tabs  •  Esc dismiss",
+          q.multiSelect
+            ? " ↑↓ navigate  •  Space toggle  •  Enter confirm  •  ←→/Tab tabs  •  Esc dismiss"
+            : " ↑↓ navigate  •  Space/Enter choose & continue  •  ←→/Tab tabs  •  Esc dismiss",
         ),
       );
     }

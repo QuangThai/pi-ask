@@ -37,6 +37,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       `Use ${toolName} for user decisions instead of asking in plain text.`,
       `Review answers are collected in a review tab before submission.`,
+      `Choosing a single-choice option (Space/Enter) saves and continues to the next tab automatically; an Other answer is saved and continues on Enter.`,
       `Use showWhen for conditional follow-ups; do not nest showWhen deeper than one level.`,
       `When unavailable (print/JSON mode) the tool disables automatically.`,
       `Keep headers under ${HEADER_DISPLAY_MAX} characters for clean TUI tabs.`,

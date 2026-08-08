@@ -174,7 +174,7 @@ describe("QuestionnaireComponent", () => {
     expect(result).toBeNull();
   });
 
-  it("saves and confirms an Other answer", () => {
+  it("saves, confirms, and continues with a single Enter on an Other answer", () => {
     const component = new QuestionnaireComponent(
       questions,
       tui as never,
@@ -188,13 +188,15 @@ describe("QuestionnaireComponent", () => {
     component.handleInput("SQLite");
     component.handleInput(KEYS.enter);
 
-    expect(component.render(80).join("\n")).toContain(
-      "Other — add your own answer: SQLite",
-    );
-
-    component.handleInput(KEYS.enter);
+    // One Enter from the editor saves AND advances to the next tab.
     expect(component.render(80).join("\n")).toContain(
       "Which interaction styles?",
+    );
+
+    // Going back shows the saved preview on the question tab.
+    component.handleInput(KEYS.left);
+    expect(component.render(80).join("\n")).toContain(
+      "Other — add your own answer: SQLite",
     );
   });
 
@@ -210,9 +212,10 @@ describe("QuestionnaireComponent", () => {
     component.handleInput(KEYS.down);
     component.handleInput(KEYS.enter);
     component.handleInput("keep this");
-    component.handleInput(KEYS.enter);
-    component.handleInput(KEYS.space);
-    component.handleInput(KEYS.escape);
+    component.handleInput(KEYS.enter); // saves + continues to next tab
+    component.handleInput(KEYS.left); // back to the answered tab
+    component.handleInput(KEYS.space); // reopen the Other editor
+    component.handleInput(KEYS.escape); // cancel the edit
 
     expect(component.render(80).join("\n")).toContain("keep this");
   });
@@ -229,7 +232,8 @@ describe("QuestionnaireComponent", () => {
     component.handleInput(KEYS.down);
     component.handleInput(KEYS.enter);
     component.handleInput("first\nsecond");
-    component.handleInput(KEYS.enter);
+    component.handleInput(KEYS.enter); // saves + continues
+    component.handleInput(KEYS.left); // back to the answered tab
 
     const lines = component.render(80);
     expect(lines.join("\n")).toContain("first ↵ second");
@@ -251,19 +255,15 @@ describe("QuestionnaireComponent", () => {
     component.handleInput(KEYS.down);
     component.handleInput(KEYS.enter);
     component.handleInput("SQLite");
-    component.handleInput(KEYS.enter);
-    component.handleInput(KEYS.enter);
+    component.handleInput(KEYS.enter); // saves + confirms -> Q2
 
-    component.handleInput(KEYS.space);
-    component.handleInput(KEYS.enter);
-
+    // Go back and clear the confirmed Other answer.
     component.handleInput(KEYS.left);
-    component.handleInput(KEYS.left);
-    component.handleInput(KEYS.space);
+    component.handleInput(KEYS.space); // reopen the Other editor
     for (let i = 0; i < "SQLite".length; i++) {
       component.handleInput(KEYS.backspace);
     }
-    component.handleInput(KEYS.enter);
+    component.handleInput(KEYS.enter); // blank save -> cleared, stays unconfirmed
 
     component.handleInput(KEYS.right);
     component.handleInput(KEYS.right);
@@ -406,6 +406,55 @@ describe("QuestionnaireComponent", () => {
       answers: [
         { questionId: "stack", selectedValues: ["backend"] },
         { questionId: "db", selectedValues: ["postgres"] },
+      ],
+    });
+  });
+
+  it("advances to the next tab when a single-select option is picked with Space", () => {
+    const component = new QuestionnaireComponent(
+      questions,
+      tui as never,
+      theme as never,
+      () => {},
+    );
+
+    component.handleInput(KEYS.space); // pick "Tool details" (Q1)
+    expect(component.render(80).join("\n")).toContain(
+      "Which interaction styles?",
+    );
+  });
+
+  it("saves Other text and continues without clearing multi-select picks", () => {
+    let result: unknown;
+    const component = new QuestionnaireComponent(
+      questions,
+      tui as never,
+      theme as never,
+      (value) => {
+        result = value;
+      },
+    );
+
+    component.handleInput(KEYS.enter); // Q1: pick & go -> Q2
+    component.handleInput(KEYS.space); // Q2: toggle "Review tab"
+    component.handleInput(KEYS.down);
+    component.handleInput(KEYS.down); // Q2 cursor -> Other row
+    component.handleInput(KEYS.enter); // open editor
+    component.handleInput("Add an export option");
+    component.handleInput(KEYS.enter); // save + confirm -> Review
+
+    expect(component.render(80).join("\n")).toContain("Review your answers");
+
+    component.handleInput(KEYS.enter); // submit
+    expect(result).toMatchObject({
+      status: "submitted",
+      answers: [
+        { questionId: "storage", selectedValues: ["details"] },
+        {
+          questionId: "ui",
+          selectedValues: ["review"],
+          customText: "Add an export option",
+        },
       ],
     });
   });

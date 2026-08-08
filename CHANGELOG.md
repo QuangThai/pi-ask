@@ -2,6 +2,21 @@
 
 All notable changes to this package are documented here.
 
+## [0.1.12] - 2026-08-09
+
+### Changed
+
+- **Pick & continue for single-choice questions** — `Space` (like `Enter`) now selects a single-choice option, confirms the tab, and advances to the next one in one press. No more select-then-confirm two-step on radio questions.
+- **Other answers continue in one Enter** — pressing `Enter` in the inline editor now saves, confirms, and advances to the next tab immediately. The intermediate "saved but unconfirmed" preview step is gone; the saved text still shows on the question tab (when navigating back) and in the Review tab.
+- Inline-editor and footer hints updated to the new flow: "Enter to save & continue", "Space/Enter choose & continue" (single-choice) vs "Space toggle • Enter confirm" (multi-select).
+- Tool prompt guidelines document the auto-advance behavior.
+
+### Fixed
+- The "saved Other text" preview state no longer leaves the user stranded mid-flow with an extra confirm press.
+
+### Tests
+- Updated Other-editing tests to the single-Enter flow and added coverage for Space pick-and-go on single-select and Other-with-multi-select (selections kept, auto-advance).
+
 ## [0.1.11] - 2026-08-07
 
 ### Fixed

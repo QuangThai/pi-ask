@@ -27,10 +27,11 @@ The tool (`ask_user_question`) makes the LLM pause and show a keyboard-driven di
 
 - **Questions tab** — each question has a header, optional context, and 2–4 options
 - **Recommended** — options marked `recommended: true` are moved to the top and show a `(Recommended)` hint; they are never pre-selected
-- **Other** — pick "Other — add your own answer" to enter free text via the inline editor
+- **Other** — pick "Other — add your own answer" to enter free text via the inline editor; `Enter` saves and continues
 - **Multi-select** — `Space` to toggle, `Enter` to confirm
+- **Pick & continue** — choosing a single-choice option (`Space`/`Enter`) saves and moves to the next tab automatically
 - **Review tab** — see all answers before submitting; navigate back to any tab to edit
-- **Keyboard navigation** — `↑↓` move, `Enter` confirm, `Space` toggle, `←→`/`Tab` switch tabs, `Esc` dismiss
+- **Keyboard navigation** — `↑↓` move, `Space`/`Enter` choose & continue, `←→`/`Tab` switch tabs, `Esc` dismiss
 
 ### Tool call (transcript)
 
@@ -123,12 +124,12 @@ Use `showWhen` to ask a follow-up only when it is relevant:
 | Key | Context | Action |
 |-----|---------|--------|
 | `↑` `↓` | Options list | Move cursor |
-| `Enter` | Required single-select option | Select and confirm |
+| `Space` / `Enter` | Required single-select option | Select and continue to next tab |
 | `Enter` | Optional question with no answer | Skip and confirm |
-| `Space` | Option row | Select single option / toggle multi-select option |
-| `Enter` | Selected options | Confirm question |
+| `Space` | Multi-select option | Toggle option (stay on tab) |
+| `Enter` | Selected multi-select options | Confirm question |
 | `Enter` / `Space` | "Other — add your own answer" | Open inline editor |
-| `Enter` | Inline editor (with text) | Save and close |
+| `Enter` | Inline editor (with text) | Save, confirm, and continue |
 | `Esc` | Inline editor | Cancel |
 | `←` `→` / `Tab` | Multi-question tabs | Switch tabs |
 | `Enter` | Review tab | Submit all |
@@ -139,6 +140,7 @@ Use `showWhen` to ask a follow-up only when it is relevant:
 - An unanswered required question can be visited in Review but cannot be submitted; `Enter` is a no-op until every **visible** question is confirmed.
 - An optional question can be explicitly skipped with `Enter`; it is omitted from the submitted `answers` array.
 - A required multi-select question with no checked option and no Other text cannot be confirmed.
+- Saving an Other answer (`Enter` in the inline editor) confirms the question and continues immediately; the answer is shown in the Review tab and when navigating back.
 - Saving blank Other text clears it. If that leaves no answer, the question becomes unconfirmed and blocks Submit.
 - Editing a selected answer or Other text unconfirms that question until the user confirms it again.
 - A `showWhen` follow-up is hidden until its parent is confirmed with the matching option `value`; hidden questions are omitted from tabs, Review, and `answers`.
