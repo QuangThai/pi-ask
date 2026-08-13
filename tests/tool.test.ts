@@ -612,6 +612,71 @@ describe("tool integration helpers", () => {
     expect(activeTools).not.toContain("ask_user_question");
   });
 
+  it("opens as a bounded modal overlay without replacing the fullscreen editor dock", async () => {
+    let definition:
+      | {
+          execute: (...args: never[]) => Promise<{
+            details: { status: string };
+          }>;
+        }
+      | undefined;
+    let customOptions: unknown;
+    registerExtension({
+      registerTool: (tool: typeof definition) => {
+        definition = tool;
+      },
+    } as never);
+
+    const result = await definition?.execute(
+      "call-id" as never,
+      {
+        questions: [
+          {
+            id: "overlay",
+            header: "Overlay",
+            question: "Keep the transcript visible?",
+            multiSelect: false,
+            options: [
+              { value: "yes", label: "Yes" },
+              { value: "no", label: "No" },
+            ],
+          },
+        ],
+      } as never,
+      undefined as never,
+      undefined as never,
+      {
+        mode: "tui",
+        ui: {
+          custom: (
+            factory: (
+              tui: unknown,
+              theme: unknown,
+              kb: unknown,
+              done: (value: unknown) => void,
+            ) => unknown,
+            options: unknown,
+          ) => {
+            customOptions = options;
+            factory({ requestRender() {} }, {}, undefined, () => {});
+            return Promise.resolve(null);
+          },
+        },
+      } as never,
+    );
+
+    expect(customOptions).toEqual({
+      overlay: true,
+      overlayOptions: {
+        anchor: "bottom-center",
+        width: "90%",
+        maxHeight: "90%",
+        margin: 1,
+      },
+    });
+    expect(result?.details.status).toBe("dismissed");
+  });
+
   it("returns an aborted result when the signal fires after the TUI opens", async () => {
     let definition:
       | {
