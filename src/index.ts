@@ -153,18 +153,7 @@ export default function (pi: ExtensionAPI) {
             },
           };
         },
-        {
-          // A questionnaire is modal UI, not an editor replacement. Keeping it
-          // in an overlay prevents Pi's fullscreen sticky dock from shrinking
-          // the transcript viewport while the user reviews the streamed answer.
-          overlay: true,
-          overlayOptions: {
-            anchor: "bottom-center",
-            width: "90%",
-            maxHeight: "90%",
-            margin: 1,
-          },
-        },
+        { overlay: false },
       );
 
       if (result?.status === "aborted") {

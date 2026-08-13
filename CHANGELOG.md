@@ -2,20 +2,12 @@
 
 All notable changes to this package are documented here.
 
-## [0.1.13] - 2026-08-13
+## [0.1.14] - 2026-08-13
 
-### Fixed
+### Reverted
 
-- Open the questionnaire as a bounded, bottom-centered modal overlay instead of replacing Pi's editor container. This prevents the fullscreen sticky dock from collapsing the transcript viewport and making the assistant response appear to disappear while Ask is open.
-
-### Changed
-
-- Updated the Pi development and test baseline to `@earendil-works/pi-coding-agent` and `@earendil-works/pi-tui` 0.84.1.
-- Documented fullscreen-safe modal behavior.
-
-### Tests
-
-- Added regression coverage for the exact `ctx.ui.custom()` overlay contract used by the questionnaire.
+- Restored the `0.1.12` questionnaire UI and behavior, including the original non-overlay editor-container presentation (`overlay: false`).
+- Reverted the Pi development dependencies, documentation, and tests introduced in `0.1.13` so the shipped package otherwise matches `0.1.12`.
 
 ## [0.1.12] - 2026-08-09
 

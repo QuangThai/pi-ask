@@ -25,7 +25,6 @@ pi install ./
 
 The tool (`ask_user_question`) makes the LLM pause and show a keyboard-driven dialog:
 
-- **Modal overlay** — stays above the transcript without replacing Pi's editor dock, including in fullscreen mode
 - **Questions tab** — each question has a header, optional context, and 2–4 options
 - **Recommended** — options marked `recommended: true` are moved to the top and show a `(Recommended)` hint; they are never pre-selected
 - **Other** — pick "Other — add your own answer" to enter free text via the inline editor; `Enter` saves and continues
@@ -174,11 +173,10 @@ Key design decisions:
 6. **No dead rendering** — `render()` caches by width and invalidates on state/theme change.
 7. **TUI-only custom component** — `ctx.ui.custom()` opens only in `ctx.mode === "tui"`; RPC, JSON, and print modes return an explicit `unavailable` result.
 8. **Terminal and IME safety** — rendered lines are clamped to the supplied display width; the questionnaire forwards focus to its inline `Editor` for IME-aware terminals.
-9. **Fullscreen-safe modal layout** — the questionnaire uses a bounded, bottom-centered overlay instead of replacing Pi's sticky editor dock. Opening Ask therefore does not collapse the application-owned transcript viewport in fullscreen mode.
 
 ## Reliability
 
-`npm run check` covers reducer invariants, keyboard flows, review navigation, Other editing, narrow terminal widths, runtime validation, non-TUI fallback, modal overlay configuration, and aborts before and after opening the dialog. The package tarball includes only runtime source and release metadata. Development dependencies track Pi `0.84.1`, including its fullscreen renderer APIs.
+`npm run check` covers reducer invariants, keyboard flows, review navigation, Other editing, narrow terminal widths, runtime validation, non-TUI fallback, and aborts before and after opening the dialog. The package tarball includes only runtime source and release metadata.
 
 GitHub Actions runs this check, a production dependency audit, package dry-run, and a clean tarball-install smoke test on Node 20 and 22.
 
