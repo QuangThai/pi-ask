@@ -1,3 +1,4 @@
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { Compile } from "typebox/compile";
 import { describe, expect, it } from "vitest";
 import registerExtension from "../src/index.js";
@@ -497,6 +498,62 @@ describe("tool integration helpers", () => {
     const text = rendered?.render(80).join("\n");
     expect(text).toContain("review");
     expect(text).toContain("Support CSV");
+  });
+
+  it("renders one line per answer and never exceeds the given width", () => {
+    let definition:
+      | {
+          renderResult: (...args: never[]) => {
+            render: (width: number) => string[];
+          };
+        }
+      | undefined;
+    registerExtension({
+      registerTool: (tool: typeof definition) => {
+        definition = tool;
+      },
+    } as never);
+
+    const answers = [
+      { questionId: "perf-def", selectedValues: ["both-recommended"] },
+      {
+        questionId: "data",
+        selectedValues: ["recorded-real-fixtures-recommended"],
+      },
+      {
+        questionId: "exec",
+        selectedValues: ["real-agent-real-model-recommended"],
+      },
+      {
+        questionId: "mutate",
+        selectedValues: ["mock-server-only-recommended"],
+        customText: "x".repeat(200),
+      },
+    ];
+
+    const width = 40;
+    const lines =
+      definition
+        ?.renderResult(
+          {
+            details: { version: 1, status: "submitted", answers },
+            content: [],
+          } as never,
+          {} as never,
+          { fg: (_color: string, value: string) => value } as never,
+          {} as never,
+        )
+        .render(width) ?? [];
+
+    // Regression: previously every answer was joined into a single entry with
+    // embedded newlines, which the host measured as one very wide line.
+    expect(lines).toHaveLength(answers.length);
+    for (const line of lines) {
+      expect(line).not.toContain("\n");
+      expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+    }
+    expect(lines[0]).toContain("perf-def");
+    expect(lines[3]).toContain("mutate");
   });
 
   it("renders an explicit skipped summary for empty submitted answers", () => {
