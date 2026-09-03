@@ -2,6 +2,17 @@
 
 All notable changes to this package are documented here.
 
+## [0.1.15] - 2026-09-03
+
+### Fixed
+
+- Fixed crash `Rendered line exceeds terminal width` when rendering submitted answers with 2+ questions ([#1](https://github.com/QuangThai/pi-ask/issues/1)). `renderResult()` joined every answer with `\n` into a single array entry and ignored the `width` argument, while the host renderer treats each entry as exactly one physical terminal line. It now emits one entry per physical line (splitting embedded newlines) and truncates each with `truncateToWidth()` after measuring with `visibleWidth()`.
+- Thanks to [@jamesdube](https://github.com/jamesdube) for the detailed report and fix ([#2](https://github.com/QuangThai/pi-ask/pull/2)).
+
+### Tests
+
+- Added regression coverage: 4 answers (one with a 200-char Other text) rendered at width 40 assert one entry per answer, no embedded newlines, and `visibleWidth(line) <= width`.
+
 ## [0.1.14] - 2026-08-13
 
 ### Reverted
