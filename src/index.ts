@@ -1,5 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { TruncatedText } from "@earendil-works/pi-tui";
+import {
+  TruncatedText,
+  truncateToWidth,
+  visibleWidth,
+} from "@earendil-works/pi-tui";
 import { QuestionnaireComponent, type Theme } from "./component.js";
 import { summarizeAnswers } from "./result.js";
 import {
@@ -246,16 +250,24 @@ export default function (pi: ExtensionAPI) {
                     .join("; ");
                   return `${theme.fg("accent", `${formatInlineText(answer.questionId)}: `)}${theme.fg("text", answerText)}`;
                 });
-          // Build a TruncatedText from joined lines
+          // One entry per physical line, each truncated to the available
+          // width. The host renderer treats every array entry as exactly one
+          // terminal line and throws if it overflows, so we must never emit an
+          // embedded newline or an over-wide string here.
           const box = {
-            render(_width: number) {
-              // Simple rendering: join with newline
-              let result = "";
+            render(width: number) {
+              const max = Math.max(1, width);
+              const out: string[] = [];
               for (const line of lines) {
-                if (result) result += "\n";
-                result += line;
+                for (const part of line.split("\n")) {
+                  out.push(
+                    visibleWidth(part) > max
+                      ? truncateToWidth(part, max)
+                      : part,
+                  );
+                }
               }
-              return [result];
+              return out;
             },
             invalidate() {},
           };
