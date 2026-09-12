@@ -1,12 +1,18 @@
+import type { Theme as PiTheme } from "@earendil-works/pi-coding-agent";
 import {
   Editor,
   type Focusable,
   Key,
+  type Keybinding,
+  type KeybindingsManager,
+  type KeyId,
   matchesKey,
+  type TUI,
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import { keyLabelFor } from "./keys.js";
 import { normalizeQuestions, type Option, type Question } from "./schema.js";
 import {
   createQuestionnaireState,
@@ -18,20 +24,35 @@ import {
 } from "./state.js";
 import { formatInlineText } from "./text.js";
 
-export type Theme = {
-  fg: (color: string, text: string) => string;
-  bg: (color: string, text: string) => string;
-  bold: (text: string) => string;
-};
+/**
+ * Only the three styling helpers are used, so a test or a host that is not the
+ * interactive TUI can supply a stand-in without implementing the whole class.
+ */
+export type Theme = Pick<PiTheme, "fg" | "bg" | "bold">;
 
-type TUILike = { requestRender(): void };
 type DoneFn = (result: unknown) => void;
+
+/** Rows below the options list. Their order matches the rendered order. */
+type ExtraRow = "other" | "skip";
+
+/**
+ * Pick the first hint variant that fits the available columns, falling back to
+ * the shortest one. Hints are the only place the key bindings are discoverable,
+ * so a narrow terminal should lose detail, not the whole line.
+ */
+function firstThatFits(width: number, variants: string[]): string {
+  for (const variant of variants) {
+    if (visibleWidth(variant) <= width) return variant;
+  }
+  return variants[variants.length - 1] ?? "";
+}
 
 export class QuestionnaireComponent implements Focusable {
   private questions: Question[];
   private state: QuestionnaireState;
   private theme: Theme;
-  private tui: TUILike;
+  private tui: TUI;
+  private keybindings?: KeybindingsManager;
   private done: DoneFn;
   private editor: Editor;
   private cachedWidth?: number;
@@ -48,14 +69,21 @@ export class QuestionnaireComponent implements Focusable {
     this.editor.focused = value;
   }
 
-  constructor(questions: Question[], tui: TUILike, theme: Theme, done: DoneFn) {
+  constructor(
+    questions: Question[],
+    tui: TUI,
+    theme: Theme,
+    done: DoneFn,
+    keybindings?: KeybindingsManager,
+  ) {
     // Normalize once so recommended options lead and selectedValues indices match.
     this.questions = normalizeQuestions(questions);
     this.state = createQuestionnaireState(this.questions);
     this.tui = tui;
     this.theme = theme;
+    this.keybindings = keybindings;
     this.done = done;
-    this.editor = new Editor(tui as never, {
+    this.editor = new Editor(tui, {
       borderColor: (s: string) => theme.fg("accent", s),
       selectList: {
         selectedPrefix: (t: string) => theme.fg("accent", t),
@@ -72,18 +100,43 @@ export class QuestionnaireComponent implements Focusable {
     };
   }
 
+  /**
+   * Match against the user's configured keybindings when the host injected its
+   * manager (pi always does), falling back to the documented defaults for
+   * direct construction in tests. Keys with no keybinding id — Space and the
+   * tab-switching arrows — always use their literal binding.
+   */
+  private matches(data: string, binding: Keybinding, fallback: KeyId): boolean {
+    return this.keybindings
+      ? this.keybindings.matches(data, binding)
+      : matchesKey(data, fallback);
+  }
+
+  private keyLabel(binding: Keybinding, fallback: KeyId): string {
+    return keyLabelFor(this.keybindings, binding, fallback);
+  }
+
   private dispatch(action: QuestionnaireAction): void {
     this.state = reduceQuestionnaire(this.state, action, this.questions);
     this.invalidate();
     this.tui.requestRender();
   }
 
-  private getOptions(question: Question): Option[] {
-    return [...question.options];
+  /** Rows shown under the options for a question, in render order. */
+  private getExtraRows(question: Question): ExtraRow[] {
+    return question.required === false ? ["other", "skip"] : ["other"];
   }
 
   private getRowCount(question: Question): number {
-    return this.getOptions(question).length + 1; // options + Other
+    return question.options.length + this.getExtraRows(question).length;
+  }
+
+  /** Which non-option row the cursor is on, if any. */
+  private getExtraRow(
+    question: Question,
+    cursor: number,
+  ): ExtraRow | undefined {
+    return this.getExtraRows(question)[cursor - question.options.length];
   }
 
   /** Visible question indices plus the Review tab index. */
@@ -99,23 +152,27 @@ export class QuestionnaireComponent implements Focusable {
     if (tabs.length === 0) return;
     const current = tabs.indexOf(this.state.activeTab);
     const from = current >= 0 ? current : 0;
-    this.dispatch({
-      type: "goTab",
-      tab: tabs[(from + delta + tabs.length) % tabs.length],
-    });
+    const next = tabs[(from + delta + tabs.length) % tabs.length];
+    if (next === undefined) return;
+    this.dispatch({ type: "goTab", tab: next });
   }
 
   handleInput(data: string): void {
     if (this.settled) return;
 
-    const t = this.state.editing;
-
-    if (t === "custom") {
-      if (matchesKey(data, Key.escape)) {
+    if (this.state.editing === "custom") {
+      // `tui.select.cancel` also covers ctrl+c, which inside a text editor is
+      // the copy binding — leave that one to the editor.
+      const isEditorCopy =
+        this.keybindings?.matches(data, "tui.input.copy") ?? false;
+      if (
+        !isEditorCopy &&
+        this.matches(data, "tui.select.cancel", Key.escape)
+      ) {
         this.dispatch({ type: "cancelEdit" });
         return;
       }
-      if (matchesKey(data, Key.enter)) {
+      if (this.matches(data, "tui.input.submit", Key.enter)) {
         const value = this.editor.getText();
         this.dispatch({
           type: "saveCustom",
@@ -134,7 +191,7 @@ export class QuestionnaireComponent implements Focusable {
       return;
     }
 
-    if (matchesKey(data, Key.escape)) {
+    if (this.matches(data, "tui.select.cancel", Key.escape)) {
       this.finish(null);
       return;
     }
@@ -146,56 +203,74 @@ export class QuestionnaireComponent implements Focusable {
       this.moveTab(1);
       return;
     }
-    if (matchesKey(data, "shift+tab") || matchesKey(data, Key.shift("tab"))) {
+    if (matchesKey(data, Key.shift("tab"))) {
       this.moveTab(-1);
       return;
     }
 
     // Review tab
     if (this.state.activeTab === this.questions.length) {
-      if (matchesKey(data, Key.enter) && this.state.canSubmit) {
+      if (
+        this.matches(data, "tui.select.confirm", Key.enter) &&
+        this.state.canSubmit
+      ) {
         this.finish(toResult(this.questions, this.state));
       }
       return;
     }
 
-    const q = this.questions[this.state.activeTab];
-    if (!q) return;
+    const question = this.questions[this.state.activeTab];
+    const answer = this.state.answers[this.state.activeTab];
+    if (!question || !answer) return;
 
-    if (matchesKey(data, Key.up)) {
-      this.dispatch({ type: "move", delta: -1, max: this.getRowCount(q) - 1 });
+    if (this.matches(data, "tui.select.up", Key.up)) {
+      this.dispatch({
+        type: "move",
+        delta: -1,
+        max: this.getRowCount(question) - 1,
+      });
       return;
     }
-    if (matchesKey(data, Key.down)) {
-      this.dispatch({ type: "move", delta: 1, max: this.getRowCount(q) - 1 });
+    if (this.matches(data, "tui.select.down", Key.down)) {
+      this.dispatch({
+        type: "move",
+        delta: 1,
+        max: this.getRowCount(question) - 1,
+      });
       return;
     }
-    const cursor = this.state.answers[this.state.activeTab]?.cursorIndex ?? 0;
-    const opts = this.getOptions(q);
 
-    if (cursor === opts.length) {
-      // Other / custom answer: Enter confirms an existing value; Space edits it.
-      const answer = this.state.answers[this.state.activeTab];
-      if (matchesKey(data, Key.enter) && answer?.customText) {
+    const cursor = answer.cursorIndex;
+    const isConfirm = this.matches(data, "tui.select.confirm", Key.enter);
+    const isSpace = matchesKey(data, Key.space);
+    const extraRow = this.getExtraRow(question, cursor);
+
+    if (extraRow === "skip") {
+      if (isConfirm || isSpace) this.dispatch({ type: "skip" });
+      return;
+    }
+
+    if (extraRow === "other") {
+      // Enter confirms an already saved answer; otherwise open the editor.
+      if (isConfirm && answer.customText) {
         this.dispatch({ type: "confirm" });
         return;
       }
-      if (matchesKey(data, Key.enter) || matchesKey(data, Key.space)) {
+      if (isConfirm || isSpace) {
         this.dispatch({ type: "startCustom" });
-        this.editor.setText(answer?.customText ?? "");
+        this.editor.setText(answer.customText ?? "");
       }
       return;
     }
-    if (q.multiSelect) {
-      if (matchesKey(data, Key.space)) {
+
+    if (question.multiSelect) {
+      if (isSpace) {
         this.dispatch({ type: "toggle", optionIndex: cursor });
         return;
       }
-      if (matchesKey(data, Key.enter)) {
-        const ans = this.state.answers[this.state.activeTab];
-        if (!ans) return;
-        // Toggle cursor option if not yet selected (Enter = toggle + confirm)
-        if (!ans.selectedValues.includes(String(cursor))) {
+      if (isConfirm) {
+        // Enter = toggle the highlighted option if needed, then confirm.
+        if (!answer.selectedValues.includes(String(cursor))) {
           this.dispatch({ type: "toggle", optionIndex: cursor });
         }
         const updated = this.state.answers[this.state.activeTab];
@@ -204,33 +279,17 @@ export class QuestionnaireComponent implements Focusable {
           (updated.selectedValues.length > 0 || updated.customText)
         ) {
           this.dispatch({ type: "confirm" });
-        } else if (q.required === false) {
-          this.dispatch({ type: "confirm" });
         }
-        return;
       }
-    } else {
-      if (matchesKey(data, Key.space)) {
-        // Pick & go: choosing one option confirms the tab and advances.
-        this.dispatch({ type: "select", optionIndex: cursor });
-        this.dispatch({ type: "confirm" });
-        return;
-      }
-      if (matchesKey(data, Key.enter)) {
-        const answer = this.state.answers[this.state.activeTab];
-        if (
-          q.required === false &&
-          answer &&
-          answer.selectedValues.length === 0 &&
-          !answer.customText
-        ) {
-          this.dispatch({ type: "confirm" });
-        } else {
-          this.dispatch({ type: "select", optionIndex: cursor });
-          this.dispatch({ type: "confirm" });
-        }
-        return;
-      }
+      return;
+    }
+
+    // Single select: picking an option always selects it, confirms the tab and
+    // advances — including on an optional question, where skipping has its own
+    // row so Enter can never silently discard the highlighted choice.
+    if (isConfirm || isSpace) {
+      this.dispatch({ type: "select", optionIndex: cursor });
+      this.dispatch({ type: "confirm" });
     }
   }
 
@@ -261,6 +320,8 @@ export class QuestionnaireComponent implements Focusable {
     };
 
     const th = this.theme;
+    const confirmKey = this.keyLabel("tui.select.confirm", Key.enter);
+    const cancelKey = this.keyLabel("tui.select.cancel", Key.escape);
 
     add(th.fg("accent", "─".repeat(renderWidth)));
 
@@ -273,9 +334,11 @@ export class QuestionnaireComponent implements Focusable {
     if (visibleIndices.length > 1) {
       const parts: string[] = [];
       for (const i of visibleIndices) {
+        const question = this.questions[i];
+        if (!question) continue;
         const isActive = i === this.state.activeTab;
         const isConfirmed = this.state.answers[i]?.confirmed ?? false;
-        const label = ` ${this.questions[i].header} `;
+        const label = ` ${question.header} `;
         if (isActive) {
           parts.push(th.bg("selectedBg", th.fg("text", label)));
         } else {
@@ -303,6 +366,7 @@ export class QuestionnaireComponent implements Focusable {
       for (const [reviewIndex, i] of visibleIndices.entries()) {
         const a = this.state.answers[i];
         const qq = this.questions[i];
+        if (!qq) continue;
         addWrapped(
           th.fg("muted", `${reviewIndex + 1}. ${qq.header}: ${qq.question}`),
           " ",
@@ -310,7 +374,7 @@ export class QuestionnaireComponent implements Focusable {
         if (a) {
           const labels = a.selectedValues
             .map((v) => qq.options[Number(v)]?.label)
-            .filter(Boolean)
+            .filter((label): label is string => Boolean(label))
             .join(", ");
           const answerText = [
             labels,
@@ -321,15 +385,20 @@ export class QuestionnaireComponent implements Focusable {
           if (answerText) {
             addWrapped(th.fg("text", `   ${answerText}`), " ");
           } else if (a.confirmed && qq.required === false) {
-            add(th.fg("muted", "   Skipped"));
+            addWrapped(th.fg("muted", "   Skipped"), " ");
           }
         }
       }
       add("");
       if (this.state.canSubmit) {
-        add(th.fg("success", " Press Enter to submit"));
+        add(th.fg("success", ` Press ${confirmKey} to submit`));
       }
-      add(th.fg("dim", " ←→/Tab tabs  •  Enter submit  •  Esc dismiss"));
+      add(
+        th.fg(
+          "dim",
+          ` ←→/Tab tabs  •  ${confirmKey} submit  •  ${cancelKey} dismiss`,
+        ),
+      );
       add(th.fg("accent", "─".repeat(renderWidth)));
       this.cachedLines = lines;
       return lines;
@@ -351,16 +420,21 @@ export class QuestionnaireComponent implements Focusable {
     add(
       th.fg(
         "muted",
-        ` ${q.required === false ? "Optional — press Enter to skip" : q.multiSelect ? "Choose any that apply — Enter when done" : "Choose one — Space or Enter to continue"}`,
+        ` ${
+          q.multiSelect
+            ? `Choose any that apply — ${confirmKey} when done`
+            : `Choose one — Space or ${confirmKey} to continue`
+        }${q.required === false ? " — optional" : ""}`,
       ),
     );
     add("");
 
-    const opts = this.getOptions(q);
+    const opts: Option[] = q.options;
     const cursor = ans.cursorIndex;
 
     for (let i = 0; i < opts.length; i++) {
       const opt = opts[i];
+      if (!opt) continue;
       const selected = ans.selectedValues.includes(String(i));
       const isCursor = cursor === i;
       const prefix = isCursor ? th.fg("accent", "> ") : "  ";
@@ -374,18 +448,31 @@ export class QuestionnaireComponent implements Focusable {
       }
     }
 
-    // Custom answer row
-    {
-      const isCursor = cursor === opts.length;
+    for (const [extraIndex, row] of this.getExtraRows(q).entries()) {
+      const rowIndex = opts.length + extraIndex;
+      const isCursor = cursor === rowIndex;
       const prefix = isCursor ? th.fg("accent", "> ") : "  ";
-      const hasCustom = Boolean(ans.customText);
-      const labelStyle = hasCustom ? "success" : isCursor ? "accent" : "muted";
-      const customPreview = hasCustom
-        ? `: ${formatInlineText(ans.customText ?? "")}`
-        : "";
-      add(
-        `${prefix}${th.fg(labelStyle, `Other — add your own answer${customPreview}`)}`,
-      );
+      if (row === "other") {
+        const hasCustom = Boolean(ans.customText);
+        const labelStyle = hasCustom
+          ? "success"
+          : isCursor
+            ? "accent"
+            : "muted";
+        const customPreview = hasCustom
+          ? `: ${formatInlineText(ans.customText ?? "")}`
+          : "";
+        add(
+          `${prefix}${th.fg(labelStyle, `Other — add your own answer${customPreview}`)}`,
+        );
+      } else {
+        const skipped =
+          ans.confirmed && ans.selectedValues.length === 0 && !ans.customText;
+        const labelStyle = skipped ? "success" : isCursor ? "accent" : "muted";
+        add(
+          `${prefix}${th.fg(labelStyle, `Skip this question${skipped ? " (skipped)" : ""}`)}`,
+        );
+      }
     }
 
     // Editor
@@ -400,25 +487,26 @@ export class QuestionnaireComponent implements Focusable {
 
     add("");
     if (this.state.editing) {
-      add(th.fg("dim", " Enter to save & continue  •  Esc to cancel"));
-    } else if (visibleIndices.length === 1) {
       add(
         th.fg(
           "dim",
-          q.multiSelect
-            ? " ↑↓ navigate  •  Space toggle  •  Enter confirm  •  Esc dismiss"
-            : " ↑↓ navigate  •  Space/Enter choose & continue  •  Esc dismiss",
+          ` ${confirmKey} to save & continue  •  ${cancelKey} to cancel`,
         ),
       );
     } else {
-      add(
-        th.fg(
-          "dim",
-          q.multiSelect
-            ? " ↑↓ navigate  •  Space toggle  •  Enter confirm  •  ←→/Tab tabs  •  Esc dismiss"
-            : " ↑↓ navigate  •  Space/Enter choose & continue  •  ←→/Tab tabs  •  Esc dismiss",
-        ),
-      );
+      const navHint = q.multiSelect
+        ? `↑↓ navigate  •  Space toggle  •  ${confirmKey} confirm`
+        : `↑↓ navigate  •  Space/${confirmKey} choose & continue`;
+      const tabHint = visibleIndices.length === 1 ? "" : "  •  ←→/Tab tabs";
+      // Drop the least important hints first rather than letting the line be
+      // cut off mid-word on a narrow terminal.
+      const hint = firstThatFits(renderWidth - 1, [
+        `${navHint}${tabHint}  •  ${cancelKey} dismiss`,
+        `${navHint}  •  ${cancelKey} dismiss`,
+        `↑↓ move  •  ${confirmKey} choose  •  ${cancelKey} dismiss`,
+        `${confirmKey} choose  •  ${cancelKey} dismiss`,
+      ]);
+      add(th.fg("dim", ` ${hint}`));
     }
 
     add(th.fg("accent", "─".repeat(renderWidth)));

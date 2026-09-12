@@ -4,47 +4,17 @@ import {
   MAX_CUSTOM_TEXT_LENGTH,
   type Question,
 } from "./schema.js";
+import { toWrappedText } from "./text.js";
 
-function isTerminalControlCharacter(code: number): boolean {
-  return (
-    code <= 8 || (code >= 11 && code <= 31) || (code >= 127 && code <= 159)
-  );
-}
-
+/**
+ * The user's own free-text answer keeps its line breaks (the review tab and
+ * the transcript render them inline with `formatInlineText`), but every escape
+ * sequence and control character is removed before the text is stored.
+ */
 function normalizeCustomText(value: string): string | undefined {
-  let normalized = "";
-
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
-    if (code === 27) {
-      const next = value.charCodeAt(index + 1);
-      if (next === 91) {
-        // CSI: skip through its final byte.
-        index++;
-        while (++index < value.length) {
-          const csiCode = value.charCodeAt(index);
-          if (csiCode >= 64 && csiCode <= 126) break;
-        }
-      } else if (next === 93) {
-        // OSC: skip through BEL or the string terminator (ESC + backslash).
-        index += 2;
-        while (index < value.length) {
-          if (value.charCodeAt(index) === 7) break;
-          if (value.charCodeAt(index) === 27 && value[index + 1] === "\\") {
-            index++;
-            break;
-          }
-          index++;
-        }
-      } else {
-        index++;
-      }
-      continue;
-    }
-    if (!isTerminalControlCharacter(code)) normalized += value[index];
-  }
-
-  normalized = normalized.trim().slice(0, MAX_CUSTOM_TEXT_LENGTH);
+  const normalized = toWrappedText(value)
+    .trim()
+    .slice(0, MAX_CUSTOM_TEXT_LENGTH);
   return normalized || undefined;
 }
 
@@ -70,6 +40,7 @@ export type QuestionnaireAction =
   | { type: "startCustom" }
   | { type: "saveCustom"; value: string; clearSelections?: boolean }
   | { type: "confirm" }
+  | { type: "skip" }
   | { type: "goTab"; tab: number }
   | { type: "cancelEdit" };
 
@@ -210,8 +181,21 @@ export function reduceQuestionnaire(
   action: QuestionnaireAction,
   questions: Question[],
 ): QuestionnaireState {
+  // The review tab has no answer row of its own; only tab navigation is valid
+  // there.
+  if (action.type === "goTab") {
+    return syncConditionalState(
+      {
+        ...state,
+        activeTab: Math.max(0, Math.min(questions.length, action.tab)),
+        editing: undefined,
+      },
+      questions,
+    );
+  }
+
   const answer = state.answers[state.activeTab];
-  if (!answer && action.type !== "goTab") return state;
+  if (!answer) return state;
 
   switch (action.type) {
     case "move":
@@ -254,15 +238,21 @@ export function reduceQuestionnaire(
     }
     case "cancelEdit":
       return { ...state, editing: undefined };
-    case "goTab":
-      return syncConditionalState(
-        {
-          ...state,
-          activeTab: Math.max(0, Math.min(questions.length, action.tab)),
-          editing: undefined,
-        },
-        questions,
-      );
+    case "skip": {
+      // Explicitly answering "nothing" on an optional question: clear whatever
+      // was picked before, mark it confirmed, and move on.
+      if (answer.required) return state;
+      const skipped = updateAnswer(state, questions, (current) => ({
+        ...clearAnswer(current),
+        cursorIndex: current.cursorIndex,
+        confirmed: true,
+      }));
+      return {
+        ...skipped,
+        activeTab: nextVisibleTab(questions, skipped.answers, state.activeTab),
+        editing: undefined,
+      };
+    }
     case "confirm": {
       const hasAnswer =
         answer.selectedValues.length > 0 || Boolean(answer.customText);
