@@ -13,7 +13,7 @@ Inspired by the `AskUserQuestion` tool from Claude Code / OpenCode / Codex CLI.
 pi install npm:@nguyenquangthai/pi-ask
 
 # Or pin a Git commit/tag
-pi install git:github.com/QuangThai/pi-ask@v0.1.15
+pi install git:github.com/QuangThai/pi-ask@v0.2.0
 
 # Local development
 pi install ./
