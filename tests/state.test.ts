@@ -8,6 +8,7 @@ import {
   toResult,
   visibleQuestionIndices,
 } from "../src/state.js";
+import { at } from "./helpers.js";
 
 const questions: Question[] = [
   {
@@ -178,7 +179,7 @@ describe("questionnaire state", () => {
 
   it("moves cursor with bounds", () => {
     const state = apply([{ type: "move", delta: 1, max: 3 }]);
-    expect(state.answers[0].cursorIndex).toBe(1);
+    expect(at(state.answers, 0).cursorIndex).toBe(1);
   });
 
   it("toggles multi-select option on/off", () => {
@@ -187,7 +188,7 @@ describe("questionnaire state", () => {
       { type: "toggle", optionIndex: 1 },
       { type: "toggle", optionIndex: 0 },
     ]);
-    expect(state.answers[0].selectedValues).toEqual(["1"]);
+    expect(at(state.answers, 0).selectedValues).toEqual(["1"]);
   });
 
   it("unconfirms a multi-select question when its final selection is removed", () => {
@@ -214,13 +215,13 @@ describe("questionnaire state", () => {
       { type: "confirm" },
       questions,
     );
-    expect(state.answers[0].confirmed).toBe(false);
+    expect(at(state.answers, 0).confirmed).toBe(false);
     expect(state.activeTab).toBe(0);
   });
 
   it("confirms an optional question without an answer", () => {
     const optionalQuestions: Question[] = [
-      { ...questions[0], required: false },
+      { ...at(questions, 0), required: false },
     ];
     const initialState = createQuestionnaireState(optionalQuestions);
     const state = reduceQuestionnaire(
@@ -229,7 +230,7 @@ describe("questionnaire state", () => {
       optionalQuestions,
     );
 
-    expect(state.answers[0].confirmed).toBe(true);
+    expect(at(state.answers, 0).confirmed).toBe(true);
     expect(state.activeTab).toBe(1);
     expect(toResult(optionalQuestions, state).answers).toEqual([]);
   });
@@ -414,7 +415,7 @@ describe("conditional showWhen", () => {
       [{ type: "select", optionIndex: 0 }, { type: "confirm" }],
       conditionalQuestions,
     );
-    expect(conditionalQuestions[1].required).not.toBe(false);
+    expect(at(conditionalQuestions, 1).required).not.toBe(false);
     expect(state.canSubmit).toBe(true);
   });
 
@@ -457,8 +458,8 @@ describe("conditional showWhen", () => {
 
   it("lets a visible optional child be skipped", () => {
     const optionalChild: Question[] = [
-      conditionalQuestions[0],
-      { ...conditionalQuestions[1], required: false },
+      at(conditionalQuestions, 0),
+      { ...at(conditionalQuestions, 1), required: false },
     ];
     const state = apply(
       [

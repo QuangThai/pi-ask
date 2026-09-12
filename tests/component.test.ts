@@ -2,6 +2,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { QuestionnaireComponent } from "../src/component.js";
 import type { Question } from "../src/schema.js";
+import { at } from "./helpers.js";
 
 /** Terminal control sequences expected by pi-tui's matchesKey */
 const KEYS = {
@@ -293,7 +294,7 @@ describe("QuestionnaireComponent", () => {
   it("allows an optional question to be skipped and omits it from the result", () => {
     let result: unknown;
     const optionalQuestion: Question = {
-      ...questions[0],
+      ...at(questions, 0),
       required: false,
     };
     const component = new QuestionnaireComponent(
@@ -305,10 +306,67 @@ describe("QuestionnaireComponent", () => {
       },
     );
 
+    // Enter on a highlighted option must never discard it, so skipping is its
+    // own row underneath "Other".
+    expect(component.render(80).join("\n")).toContain("Skip this question");
+
+    component.handleInput(KEYS.down); // Local file
+    component.handleInput(KEYS.down); // Other
+    component.handleInput(KEYS.down); // Skip this question
     component.handleInput(KEYS.enter);
     expect(component.render(80).join("\n")).toContain("Skipped");
 
     component.handleInput(KEYS.enter);
+    expect(result).toMatchObject({ status: "submitted", answers: [] });
+  });
+
+  it("selects the highlighted option on an optional question instead of skipping", () => {
+    let result: unknown;
+    const optionalQuestion: Question = {
+      ...at(questions, 0),
+      required: false,
+    };
+    const component = new QuestionnaireComponent(
+      [optionalQuestion],
+      tui as never,
+      theme as never,
+      (value) => {
+        result = value;
+      },
+    );
+
+    component.handleInput(KEYS.enter); // on "Tool details"
+    component.handleInput(KEYS.enter); // submit from the review tab
+
+    expect(result).toMatchObject({
+      status: "submitted",
+      answers: [{ questionId: "storage", selectedValues: ["details"] }],
+    });
+  });
+
+  it("clears an earlier pick when the user then chooses to skip", () => {
+    let result: unknown;
+    const optionalQuestion: Question = {
+      ...at(questions, 0),
+      required: false,
+    };
+    const component = new QuestionnaireComponent(
+      [optionalQuestion],
+      tui as never,
+      theme as never,
+      (value) => {
+        result = value;
+      },
+    );
+
+    component.handleInput(KEYS.enter); // pick "Tool details", jump to review
+    component.handleInput(KEYS.left); // back to the question
+    component.handleInput(KEYS.down);
+    component.handleInput(KEYS.down);
+    component.handleInput(KEYS.down); // Skip this question
+    component.handleInput(KEYS.enter);
+    component.handleInput(KEYS.enter); // submit from the review tab
+
     expect(result).toMatchObject({ status: "submitted", answers: [] });
   });
 

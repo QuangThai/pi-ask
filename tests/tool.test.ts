@@ -16,6 +16,7 @@ import {
   reduceQuestionnaire,
   toResult,
 } from "../src/state.js";
+import { at, createFakePiState, fakePi } from "./helpers.js";
 
 describe("tool integration helpers", () => {
   it("stable-partitions recommended options to the front", () => {
@@ -94,11 +95,11 @@ describe("tool integration helpers", () => {
           }>;
         }
       | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     const result = await definition?.execute(
       "call-id" as never,
@@ -451,8 +452,8 @@ describe("tool integration helpers", () => {
     const result = toResult(questions, state);
     expect(result.status).toBe("submitted");
     expect(result.answers).toHaveLength(1);
-    expect(result.answers[0].questionId).toBe("test");
-    expect(result.answers[0].selectedValues).toEqual(["x"]);
+    expect(at(result.answers, 0).questionId).toBe("test");
+    expect(at(result.answers, 0).selectedValues).toEqual(["x"]);
   });
 
   it("result with version field for forward compatibility", () => {
@@ -469,11 +470,11 @@ describe("tool integration helpers", () => {
           };
         }
       | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     const rendered = definition?.renderResult(
       {
@@ -508,11 +509,11 @@ describe("tool integration helpers", () => {
           };
         }
       | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     const answers = [
       { questionId: "perf-def", selectedValues: ["both-recommended"] },
@@ -547,13 +548,16 @@ describe("tool integration helpers", () => {
 
     // Regression: previously every answer was joined into a single entry with
     // embedded newlines, which the host measured as one very wide line.
-    expect(lines).toHaveLength(answers.length);
+    // One line per answer, plus the "expand" hint because the free-text answer
+    // does not fit.
+    expect(lines).toHaveLength(answers.length + 1);
     for (const line of lines) {
       expect(line).not.toContain("\n");
       expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
     expect(lines[0]).toContain("perf-def");
     expect(lines[3]).toContain("mutate");
+    expect(at(lines, 4)).toContain("to expand");
   });
 
   it("renders an explicit skipped summary for empty submitted answers", () => {
@@ -564,11 +568,11 @@ describe("tool integration helpers", () => {
           };
         }
       | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     const text = definition
       ?.renderResult(
@@ -594,11 +598,11 @@ describe("tool integration helpers", () => {
           };
         }
       | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
     const theme = {
       fg: (_color: string, text: string) => text,
       bold: (text: string) => text,
@@ -633,16 +637,12 @@ describe("tool integration helpers", () => {
           }>;
         }
       | undefined;
-    let activeTools = ["ask_user_question"];
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-      getActiveTools: () => activeTools,
-      setActiveTools: (tools: string[]) => {
-        activeTools = tools;
-      },
-    } as never);
+    const state = createFakePiState();
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }, state),
+    );
 
     const result = await definition?.execute(
       "call-id" as never,
@@ -666,7 +666,7 @@ describe("tool integration helpers", () => {
     );
 
     expect(result?.details.status).toBe("unavailable");
-    expect(activeTools).not.toContain("ask_user_question");
+    expect(state.activeTools).not.toContain("ask_user_question");
   });
 
   it("returns an aborted result when the signal fires after the TUI opens", async () => {
@@ -679,11 +679,11 @@ describe("tool integration helpers", () => {
       | undefined;
     let onAbort: (() => void) | undefined;
     let settle: ((value: unknown) => void) | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     const execution = definition?.execute(
       "call-id" as never,
@@ -746,11 +746,11 @@ describe("tool integration helpers", () => {
       | undefined;
     let onAbort: (() => void) | undefined;
     let doneCalls = 0;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     const result = await definition?.execute(
       "call-id" as never,
@@ -817,11 +817,11 @@ describe("tool integration helpers", () => {
           }>;
         }
       | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     const result = await definition?.execute(
       "call-id" as never,
@@ -986,7 +986,7 @@ describe("LLM-malformed input resilience (regression: options missing `value`)",
     ]);
   });
 
-  it("leaves explicit duplicate values for validation to reject cleanly", () => {
+  it("de-duplicates explicit duplicate values instead of failing the call", () => {
     const questions = [
       {
         id: "q1",
@@ -996,10 +996,36 @@ describe("LLM-malformed input resilience (regression: options missing `value`)",
           { value: "dup", label: "Second" },
         ],
       },
+      {
+        id: "q1",
+        question: "Pick again",
+        options: [{ label: "Yes" }, { label: "No" }],
+      },
     ];
-    expect(validateQuestions(normalizeQuestions(questions))).toBe(
-      "Duplicate option value in q1: dup",
-    );
+    const normalized = normalizeQuestions(questions);
+    expect(at(normalized, 0).options.map((option) => option.value)).toEqual([
+      "dup",
+      "dup-2",
+    ]);
+    expect(normalized.map((question) => question.id)).toEqual(["q1", "q1-2"]);
+    expect(validateQuestions(normalized)).toBeUndefined();
+  });
+
+  it("still rejects duplicates that reach validation unrepaired", () => {
+    expect(
+      validateQuestions([
+        {
+          id: "q1",
+          header: "Q1",
+          question: "Pick",
+          multiSelect: false,
+          options: [
+            { value: "dup", label: "First" },
+            { value: "dup", label: "Second" },
+          ],
+        },
+      ]),
+    ).toBe("Duplicate option value in q1: dup");
   });
 
   it("falls back to a numbered value for non-Latin labels", () => {
@@ -1099,13 +1125,11 @@ describe("LLM-malformed input resilience (regression: options missing `value`)",
           }>;
         }
       | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-      getActiveTools: () => [],
-      setActiveTools: () => {},
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     // Options missing `value` — must reach the TUI branch (unavailable in RPC
     // mode), never the "invalid" branch.
@@ -1137,13 +1161,11 @@ describe("LLM-malformed input resilience (regression: options missing `value`)",
           }>;
         }
       | undefined;
-    registerExtension({
-      registerTool: (tool: typeof definition) => {
-        definition = tool;
-      },
-      getActiveTools: () => [],
-      setActiveTools: () => {},
-    } as never);
+    registerExtension(
+      fakePi((tool) => {
+        definition = tool as typeof definition;
+      }),
+    );
 
     // Simulate pi's flow: prepareArguments() runs first and normalizes.
     const prepared = normalizeQuestionArgs({

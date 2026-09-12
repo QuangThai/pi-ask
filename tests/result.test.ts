@@ -25,7 +25,36 @@ describe("summarizeAnswers", () => {
           customText: "Support CSV",
         },
       ]),
-    ).toEqual(["Features: Review tab; Support CSV"]);
+    ).toEqual([`features: review ("Review tab"); (wrote) Support CSV`]);
+  });
+
+  it("leads with the stable option value the model supplied", () => {
+    expect(
+      summarizeAnswers(questions, [
+        { questionId: "features", selectedValues: ["review", "export"] },
+      ]),
+    ).toEqual([`features: review ("Review tab"), export ("Export")`]);
+  });
+
+  it("omits the label when it carries no extra information", () => {
+    const plain = [
+      {
+        id: "mode",
+        header: "Mode",
+        question: "Which mode?",
+        multiSelect: false,
+        options: [
+          { value: "fast", label: "fast" },
+          { value: "slow", label: "slow" },
+        ],
+      },
+    ] satisfies Question[];
+
+    expect(
+      summarizeAnswers(plain, [
+        { questionId: "mode", selectedValues: ["fast"] },
+      ]),
+    ).toEqual(["mode: fast"]);
   });
 
   it("uses stable values when the source option is unavailable", () => {
