@@ -2,5 +2,6 @@ node_modules/
 coverage/
 dist/
 *.tgz
+.package-smoke/
 .playwright-mcp/
 package.json.tmp

@@ -13,13 +13,14 @@ Inspired by the `AskUserQuestion` tool from Claude Code / OpenCode / Codex CLI.
 pi install npm:@nguyenquangthai/pi-ask
 
 # Or pin a Git commit/tag
-pi install git:github.com/QuangThai/pi-ask@v0.1.0
+pi install git:github.com/QuangThai/pi-ask@v0.1.15
 
 # Local development
 pi install ./
 ```
 
-**Prerequisites:** Pi `>=0.80.7` and Node.js `>=20.6.0`.
+**Prerequisites:** Pi `>=0.80.7` and Node.js `>=22.19.0` (the extension runs
+inside Pi's runtime, which requires that version).
 
 ## What it looks like
 
@@ -28,10 +29,11 @@ The tool (`ask_user_question`) makes the LLM pause and show a keyboard-driven di
 - **Questions tab** — each question has a header, optional context, and 2–4 options
 - **Recommended** — options marked `recommended: true` are moved to the top and show a `(Recommended)` hint; they are never pre-selected
 - **Other** — pick "Other — add your own answer" to enter free text via the inline editor; `Enter` saves and continues
+- **Skip** — optional questions (`required: false`) get their own "Skip this question" row, so `Enter` on an option always selects it
 - **Multi-select** — `Space` to toggle, `Enter` to confirm
 - **Pick & continue** — choosing a single-choice option (`Space`/`Enter`) saves and moves to the next tab automatically
 - **Review tab** — see all answers before submitting; navigate back to any tab to edit
-- **Keyboard navigation** — `↑↓` move, `Space`/`Enter` choose & continue, `←→`/`Tab` switch tabs, `Esc` dismiss
+- **Keyboard navigation** — `↑↓` move, `Space`/`Enter` choose & continue, `←→`/`Tab` switch tabs, `Esc` dismiss. Selection and confirm keys follow your `keybindings.json` (`tui.select.*`), and the on-screen hints show whatever you configured
 
 ### Tool call (transcript)
 
@@ -112,11 +114,14 @@ Use `showWhen` to ask a follow-up only when it is relevant:
 - `value`, `label`, `id`, and `header` are **required in the public schema**, but the tool registers a `prepareArguments()` hook that derives anything the model omits *before* Pi's validation runs — so LLM calls never hit a hard framework validation error. Missing `value` → slug of the label (e.g. `Chọn mẫu tối giản` → `chon-mau-toi-gian`), missing `id` → `question-N`, missing `question` → the header, missing `header` → the question text (truncated)
 - Providing `value`/`label` explicitly is preferred: `value` is the stable key returned to you, `label` is the text shown to the user
 - A single question/option object is auto-wrapped into an array; `null`/non-object entries are dropped; string booleans (`"false"`, `"no"`, `"yes"`, …) are normalized
-- `required` defaults to `true`; set `required: false` to let the user explicitly skip a question
+- `required` defaults to `true`; set `required: false` to add a "Skip this question" row the user can choose deliberately
 - `showWhen: { questionId, equals }` shows a follow-up only after the parent is confirmed with that option `value` (one level deep; Other text never matches)
 - Use `recommended: true` on the best option (moved to the top with a hint; user must select it explicitly)
 - Do **not** include a custom "Other" option — it is automatic
-- `header` ≤ 12 characters (longer headers are truncated, never rejected)
+- `header` ≤ 12 terminal columns (longer headers are truncated on a grapheme boundary, never rejected — CJK and emoji count as two columns)
+- `question`, `context` and option `description` may contain line breaks and are wrapped; `header`, `label`, `value` and `id` are collapsed onto one line
+- Escape sequences and control characters are stripped from every string before validation, so styled or multi-line model output never fails the call
+- More than four options are trimmed to the first four (recommended first) instead of failing; duplicate ids or option values get a `-2` suffix
 - Free-text Other answers are capped at 4,000 characters; terminal control characters are removed
 
 ## Key bindings
@@ -124,8 +129,8 @@ Use `showWhen` to ask a follow-up only when it is relevant:
 | Key | Context | Action |
 |-----|---------|--------|
 | `↑` `↓` | Options list | Move cursor |
-| `Space` / `Enter` | Required single-select option | Select and continue to next tab |
-| `Enter` | Optional question with no answer | Skip and confirm |
+| `Space` / `Enter` | Single-select option | Select and continue to next tab |
+| `Space` / `Enter` | "Skip this question" (optional questions only) | Clear any pick and confirm the question as skipped |
 | `Space` | Multi-select option | Toggle option (stay on tab) |
 | `Enter` | Selected multi-select options | Confirm question |
 | `Enter` / `Space` | "Other — add your own answer" | Open inline editor |
@@ -135,10 +140,14 @@ Use `showWhen` to ask a follow-up only when it is relevant:
 | `Enter` | Review tab | Submit all |
 | `Esc` | Anywhere | Cancel / dismiss |
 
+`Enter` and `Esc` above are the defaults for `tui.select.confirm` and
+`tui.select.cancel`. If you rebind them in `~/.pi/agent/keybindings.json`, the
+questionnaire follows your binding and the hint line shows it.
+
 ## Submission guarantees
 
 - An unanswered required question can be visited in Review but cannot be submitted; `Enter` is a no-op until every **visible** question is confirmed.
-- An optional question can be explicitly skipped with `Enter`; it is omitted from the submitted `answers` array.
+- An optional question is skipped only from its own "Skip this question" row; it is then omitted from the submitted `answers` array. `Enter` on an option always selects that option, so a highlighted answer is never silently discarded.
 - A required multi-select question with no checked option and no Other text cannot be confirmed.
 - Saving an Other answer (`Enter` in the inline editor) confirms the question and continues immediately; the answer is shown in the Review tab and when navigating back.
 - Saving blank Other text clears it. If that leaves no answer, the question becomes unconfirmed and blocks Submit.
@@ -149,18 +158,41 @@ Use `showWhen` to ask a follow-up only when it is relevant:
 - A submitted answer may carry `selectedValues` and `customText` together; the LLM transcript preserves both.
 - Terminal exit/abort, user dismissal, invalid input, and unavailable UI have distinct result statuses: `aborted`, `dismissed`, `invalid`, and `unavailable`.
 
+### What the model reads back
+
+The text returned to the model is keyed by your `id` and leads with the option
+`value` you supplied, with the label in quotes when it adds anything:
+
+```
+persistence: details ("Tool result details")
+ui: review ("Review tab"), custom ("Custom answer"); (wrote) plus a sidecar file
+```
+
+The transcript the *user* sees is the mirror image — the question header and
+the human labels, one line per answer. Press the tool-expand key (`Ctrl+O` by
+default, `app.tools.expand`) to see the stable values and the full text of a
+long free-text answer.
+
 ## Architecture
 
 ```
 src/
-├── index.ts       # Tool registration, non‑TUI fallback, renderCall/renderResult
-├── schema.ts      # TypeBox schemas + validation
-├── state.ts       # Reducer: navigation, selection, confirm, toResult
-├── component.ts   # QuestionnaireComponent (pi-tui, no pi-coding-agent import)
+├── index.ts       # Tool registration, mode handling, renderCall/renderResult
+├── schema.ts      # TypeBox schemas, normalization (repair), validation
+├── state.ts       # Reducer: navigation, selection, confirm, skip, toResult
+├── component.ts   # QuestionnaireComponent (pi-tui only at runtime)
+├── keys.ts        # Keybinding lookup and hint labels
+├── result.ts      # Answer summary for the model
+└── text.ts        # One sanitizer for every untrusted string
 tests/
-├── state.test.ts      # reducer and result-contract tests
-├── component.test.ts  # keyboard and rendering tests
-└── tool.test.ts       # runtime validation and lifecycle tests
+├── state.test.ts        # reducer and result-contract tests
+├── component.test.ts    # keyboard and rendering tests
+├── tool.test.ts         # runtime validation and lifecycle tests
+├── regressions.test.ts  # behaviours that were wrong once
+├── text.test.ts         # escape-sequence and control-character handling
+└── e2e/
+    ├── ask.e2e.test.ts  # full tool call on a real TUI + Pi's own validator
+    └── cli.e2e.test.ts  # a real `pi` process against a mock model server
 ```
 
 Key design decisions:
@@ -168,7 +200,7 @@ Key design decisions:
 1. **Built-in "Other" row** — Pi's LLM should not add its own "Other" option; the component adds "Other — add your own answer" automatically. For multi-select questions, the custom text supplements selected options.
 2. **Result by question ID, not text** — answers map via stable `questionId`/`value`, avoiding duplicate-text collisions.
 3. **State in tool result `details`** — answers persist in the Pi session JSONL via built-in `toolResult.details`. Branch tracking is automatic: `/tree` or `/fork` uses the correct branch's answers. No `appendEntry`, no external state.
-4. **Non-TUI = disabled** — in `ctx.mode !== "tui"`, returns `status: "unavailable"` and deactivates itself so the model won't retry.
+4. **Non-TUI = disabled** — outside `ctx.mode === "tui"` the tool removes itself on `session_start`, so it never reaches the model's tool list in print, JSON or RPC mode; a direct call still returns `status: "unavailable"`.
 5. **Keyboard-first WCAG** — all actions work with `↑↓ Enter Space Esc ←→`; no mouse dependency; color is never the sole indicator.
 6. **No dead rendering** — `render()` caches by width and invalidates on state/theme change.
 7. **TUI-only custom component** — `ctx.ui.custom()` opens only in `ctx.mode === "tui"`; RPC, JSON, and print modes return an explicit `unavailable` result.
@@ -176,9 +208,28 @@ Key design decisions:
 
 ## Reliability
 
-`npm run check` covers reducer invariants, keyboard flows, review navigation, Other editing, narrow terminal widths, runtime validation, non-TUI fallback, and aborts before and after opening the dialog. The package tarball includes only runtime source and release metadata.
+`npm run check` covers reducer invariants, keyboard flows, review navigation,
+Other editing, narrow terminal widths, runtime validation, non-TUI fallback,
+and aborts before and after opening the dialog.
 
-GitHub Actions runs this check, a production dependency audit, package dry-run, and a clean tarball-install smoke test on Node 20 and 22.
+`npm run check:all` adds two end-to-end layers that use the real thing rather
+than a stand-in:
+
+- **Real TUI** (`tests/e2e/ask.e2e.test.ts`) — a whole tool call runs against an
+  actual `TUI` instance, the theme Pi ships, a real `KeybindingsManager` and
+  real terminal byte sequences, with arguments validated by Pi's own
+  `validateToolArguments`. The renderer throws if any line exceeds the terminal
+  width, so the dialog is exercised at 20, 24, 40, 80 and 120 columns.
+- **Real CLI** (`tests/e2e/cli.e2e.test.ts`) — a child `pi` process loads the
+  extension from source and runs a scripted tool call against a local
+  OpenAI-compatible mock server, asserting on the tool list Pi actually sends
+  and on the tool result that comes back.
+
+The package tarball includes only runtime source and release metadata.
+
+GitHub Actions runs the check and both end-to-end layers, a production
+dependency audit, a coverage run, a package dry-run, and a clean
+tarball-install smoke test on Node 22 and 24.
 
 Implementation choices are verified against:
 
@@ -187,19 +238,27 @@ Implementation choices are verified against:
 - Reference questionnaire test coverage: https://github.com/ghoseb/pi-askuserquestion
 - Alternative `ask` contract (free text, review disposition, dismissal): https://github.com/IgorWarzocha/howaboua-pi-stuff/tree/main/packages/pi-ask
 
-## Pi package gallery readiness
+## Pi package gallery
 
-[pi.dev/packages](https://pi.dev/packages) indexes npm packages tagged with the `pi-package` keyword; it does not accept a separate package upload. This package is prepared with the required keyword and its preview asset is hosted at a stable GitHub URL through `pi.image` in `package.json`. It will appear in the gallery only after a future npm publish.
+[pi.dev/packages](https://pi.dev/packages) indexes npm packages tagged with the
+`pi-package` keyword; it does not accept a separate package upload. This package
+carries that keyword and hosts its preview asset at a stable GitHub URL through
+`pi.image` in `package.json`, and it is published to npm as
+[`@nguyenquangthai/pi-ask`](https://www.npmjs.com/package/@nguyenquangthai/pi-ask).
 
 ## Development
 
 ```bash
 npm install
 npm test                 # unit and integration tests
-npm run typecheck        # tsc --noEmit
-npm run lint             # biome check
+npm run e2e              # end-to-end through the real pi CLI
+npm run check            # typecheck + lint + tests
+npm run check:all        # the above plus the CLI end-to-end suite
+npm run test:coverage    # coverage with thresholds
 npm run pack:dry         # verify package contents
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how the test layers fit together.
 
 Test interactively:
 

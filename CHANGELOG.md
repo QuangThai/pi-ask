@@ -2,6 +2,32 @@
 
 All notable changes to this package are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Multi-line `context`, `question` and option `description` no longer fail the tool call.** Every model-supplied string is now sanitized in `prepareArguments()` — escape sequences and control characters are stripped, line breaks are kept where the renderer wraps text and collapsed to spaces where a single line is rendered. Previously a newline anywhere (a very common shape for `context`) was rejected with `contains terminal control characters`, which contradicted the whole point of the `prepareArguments()` repair hook.
+- **`Enter` on an option of an optional question selects that option.** It used to skip the question and silently discard the highlighted choice, while the same key on a multi-select optional question selected it — three different meanings for one key. Skipping is now an explicit "Skip this question" row, shown only when `required: false`, which also clears an earlier pick.
+- **Headers are truncated by terminal columns, on grapheme boundaries.** `header` was sliced by UTF-16 code unit, which could emit a lone surrogate to the terminal and counted a 12-character CJK header as fitting a 12-column tab.
+- **The model gets back the option `value` it supplied.** The result text is now keyed by question `id` and leads with the stable value (`persistence: details ("Tool result details")`). It previously returned only the human label, even though the tool description promises the value is returned.
+- **`engines.node` now matches reality (`>=22.19.0`).** Pi itself requires that version, so the previous `>=20.6.0` floor described a runtime the extension cannot run in; CI tested Node 20 for the same reason.
+
+### Added
+
+- **Configured keybindings are honoured.** The questionnaire matches against the `KeybindingsManager` Pi injects (`tui.select.up`/`down`/`confirm`/`cancel`, `tui.input.submit`) instead of hardcoded keys, and the hint lines show the configured key.
+- **Expandable result transcript.** The tool result shows one compact line per answer with the question header and human labels; expanding it (`app.tools.expand`, `Ctrl+O` by default) reveals the stable values and the full text of a long free-text answer.
+- **More model mistakes are repaired instead of rejected:** more than four options are trimmed to the first four (recommended first), and duplicate question ids or option values are de-duplicated with a `-2` suffix.
+- **End-to-end tests.** `tests/e2e/ask.e2e.test.ts` runs a complete tool call against a real `TUI`, the theme Pi ships, a real `KeybindingsManager` and real terminal byte sequences, with arguments validated by Pi's own `validateToolArguments`. `tests/e2e/cli.e2e.test.ts` spawns a real `pi` process against a local mock model server and asserts on the tool list Pi sends and the tool result it returns.
+- Coverage thresholds (`npm run test:coverage`) and `CONTRIBUTING.md`.
+
+### Changed
+
+- The tool is removed from the model's tool list on `session_start` outside TUI mode, instead of being advertised and disabled after the first failed call.
+- `renderResult()` builds its rows from `TruncatedText` inside a `Container` rather than a hand-rolled component, as the TUI docs recommend.
+- One sanitizer (`src/text.ts`) replaces the two slightly different control-character strippers that lived in `text.ts` and `state.ts`.
+- `tsconfig.json` enables `noUncheckedIndexedAccess`, `noImplicitOverride` and `verbatimModuleSyntax`; the unused `sanitizeHeaders()` export was removed.
+- CI runs on Node 22 and 24, with a concurrency group, job timeouts, SHA-pinned actions, and the end-to-end suite.
+
 ## [0.1.15] - 2026-09-03
 
 ### Fixed
