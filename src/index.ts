@@ -1,24 +1,75 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  TruncatedText,
-  truncateToWidth,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
-import { QuestionnaireComponent, type Theme } from "./component.js";
+import { Container, Text, TruncatedText } from "@earendil-works/pi-tui";
+import { QuestionnaireComponent } from "./component.js";
+import { globalKeyLabel } from "./keys.js";
 import { summarizeAnswers } from "./result.js";
 import {
   AskParameters,
   type AskResult,
   HEADER_DISPLAY_MAX,
   isNormalizedQuestions,
+  MAX_OPTIONS,
   normalizeQuestionArgs,
   normalizeQuestions,
   validateQuestions,
 } from "./schema.js";
 import { formatInlineText } from "./text.js";
 
+/** Minimal view of the tool arguments needed to label a stored result. */
+interface QuestionMeta {
+  header: string;
+  labels: Map<string, string>;
+}
+
+/**
+ * Rebuild question metadata from the recorded tool-call arguments so the
+ * transcript can show what the user actually read ("Persist: Tool result
+ * details") instead of the machine keys. Pi passes the same arguments back to
+ * `renderResult`, which is why they are not duplicated into `details`.
+ */
+function readQuestionMeta(args: unknown): Map<string, QuestionMeta> {
+  const meta = new Map<string, QuestionMeta>();
+  const questions =
+    args && typeof args === "object" && !Array.isArray(args)
+      ? (args as { questions?: unknown }).questions
+      : undefined;
+  if (!Array.isArray(questions)) return meta;
+
+  for (const question of questions) {
+    if (!question || typeof question !== "object") continue;
+    const record = question as {
+      id?: unknown;
+      header?: unknown;
+      options?: unknown;
+    };
+    if (typeof record.id !== "string" || !record.id) continue;
+    const labels = new Map<string, string>();
+    if (Array.isArray(record.options)) {
+      for (const option of record.options) {
+        if (!option || typeof option !== "object") continue;
+        const { value, label } = option as { value?: unknown; label?: unknown };
+        if (typeof value === "string" && typeof label === "string") {
+          labels.set(value, label);
+        }
+      }
+    }
+    meta.set(record.id, {
+      header:
+        typeof record.header === "string" && record.header
+          ? record.header
+          : record.id,
+      labels,
+    });
+  }
+  return meta;
+}
+
 export default function (pi: ExtensionAPI) {
   const toolName = "ask_user_question";
+
+  const deactivate = () => {
+    pi.setActiveTools(pi.getActiveTools().filter((name) => name !== toolName));
+  };
 
   pi.registerTool({
     name: toolName,
@@ -26,7 +77,7 @@ export default function (pi: ExtensionAPI) {
     description:
       `Ask the user 1–4 clarifying questions before proceeding. ` +
       `Use this tool to clarify ambiguous instructions, get preferences, ` +
-      `make decisions, or offer choices. Each question has 2–4 options. ` +
+      `make decisions, or offer choices. Each question has 2–${MAX_OPTIONS} options. ` +
       `Do not include an "Other" option — it is automatic. ` +
       `Every option needs a value (a short stable key that is returned to you, ` +
       `e.g. "minimal") and a label (the text shown to the user). If you omit a ` +
@@ -34,7 +85,8 @@ export default function (pi: ExtensionAPI) {
       `multiSelect defaults to false; set it to true only when users may select multiple options. ` +
       `Set required: false to allow skipping a question. ` +
       `Use showWhen: { questionId, equals } for a one-level follow-up that appears only after the parent is confirmed with that option value. ` +
-      `The header field is a short tab label (max 12 characters). ` +
+      `The header field is a short tab label (max ${HEADER_DISPLAY_MAX} columns). ` +
+      `question, context and option description may span several lines; header, label and value must stay on one line. ` +
       `If you recommend an option, add recommended: true to that option — it is shown first.`,
     promptSnippet:
       "ask_user_question: Structured multi‑question UI with review.",
@@ -43,18 +95,19 @@ export default function (pi: ExtensionAPI) {
       `Review answers are collected in a review tab before submission.`,
       `Choosing a single-choice option (Space/Enter) saves and continues to the next tab automatically; an Other answer is saved and continues on Enter.`,
       `Use showWhen for conditional follow-ups; do not nest showWhen deeper than one level.`,
-      `When unavailable (print/JSON mode) the tool disables automatically.`,
-      `Keep headers under ${HEADER_DISPLAY_MAX} characters for clean TUI tabs.`,
+      `Keep headers under ${HEADER_DISPLAY_MAX} columns for clean TUI tabs.`,
       `Every option needs both value and label; if value is omitted it is derived from the label.`,
+      `${toolName} returns the option value you supplied, so choose values you can branch on.`,
     ],
     parameters: AskParameters,
 
     /**
      * Runs BEFORE Pi's framework validates the arguments against AskParameters.
      * Derives anything the model omitted (option values, labels, ids, headers),
-     * wraps single-object containers, drops null placeholders, and normalizes
-     * boolean flags — so the strict schema never rejects a fixable call with a
-     * raw "Validation failed for tool ..." error. Never throws.
+     * wraps single-object containers, drops null placeholders, strips escape
+     * sequences, and normalizes boolean flags — so the strict schema never
+     * rejects a fixable call with a raw "Validation failed for tool ..." error.
+     * Never throws.
      */
     prepareArguments(args) {
       return normalizeQuestionArgs(args);
@@ -86,11 +139,10 @@ export default function (pi: ExtensionAPI) {
       }
 
       // ctx.ui.custom() requires an interactive terminal TUI; RPC UI helpers do
-      // not guarantee a focusable terminal component.
+      // not guarantee a focusable terminal component. session_start already
+      // disables the tool outside TUI mode — this is the direct-caller guard.
       if (ctx.mode !== "tui") {
-        pi.setActiveTools(
-          pi.getActiveTools().filter((name) => name !== toolName),
-        );
+        deactivate();
         return {
           content: [
             {
@@ -120,7 +172,7 @@ export default function (pi: ExtensionAPI) {
 
       // Open the interactive TUI
       const result = await ctx.ui.custom<AskResult | null>(
-        (tui, theme, _kb, done) => {
+        (tui, theme, keybindings, done) => {
           let settled = false;
           const settleOnce = (value: AskResult | null) => {
             if (settled) return;
@@ -130,8 +182,9 @@ export default function (pi: ExtensionAPI) {
           const component = new QuestionnaireComponent(
             questions,
             tui,
-            theme as unknown as Theme,
+            theme,
             (value) => settleOnce(value as AskResult | null),
+            keybindings,
           );
 
           // Cleanup on abort
@@ -216,7 +269,7 @@ export default function (pi: ExtensionAPI) {
       return new TruncatedText(text, 0, 0);
     },
 
-    renderResult(result, _options, theme, _context) {
+    renderResult(result, { expanded }, theme, context) {
       const details = result.details as AskResult | undefined;
 
       if (!details) {
@@ -234,46 +287,97 @@ export default function (pi: ExtensionAPI) {
         case "invalid":
           return new TruncatedText(theme.fg("error", "Invalid input"), 0, 0);
         case "submitted": {
-          // Compact: one line per answer. A submitted empty array means every
-          // optional question was explicitly skipped.
-          const lines =
-            details.answers.length === 0
-              ? [theme.fg("muted", "All optional questions were skipped.")]
-              : details.answers.map((answer) => {
-                  const answerText = [
-                    answer.selectedValues.join(", "),
-                    answer.customText
-                      ? `(wrote) ${formatInlineText(answer.customText)}`
-                      : undefined,
-                  ]
-                    .filter((part): part is string => Boolean(part))
-                    .join("; ");
-                  return `${theme.fg("accent", `${formatInlineText(answer.questionId)}: `)}${theme.fg("text", answerText)}`;
-                });
-          // One entry per physical line, each truncated to the available
-          // width. The host renderer treats every array entry as exactly one
-          // terminal line and throws if it overflows, so we must never emit an
-          // embedded newline or an over-wide string here.
-          const box = {
-            render(width: number) {
-              const max = Math.max(1, width);
-              const out: string[] = [];
-              for (const line of lines) {
-                for (const part of line.split("\n")) {
-                  out.push(
-                    visibleWidth(part) > max
-                      ? truncateToWidth(part, max)
-                      : part,
-                  );
-                }
-              }
-              return out;
-            },
-            invalidate() {},
-          };
-          return box;
+          // A submitted empty array means every optional question was skipped.
+          if (details.answers.length === 0) {
+            return new TruncatedText(
+              theme.fg("muted", "All optional questions were skipped."),
+              0,
+              0,
+            );
+          }
+
+          const meta = readQuestionMeta(context.args);
+          let hasHiddenDetail = false;
+
+          const rows = details.answers.map((answer) => {
+            const question = meta.get(answer.questionId);
+            const title = question?.header ?? answer.questionId;
+            const picked = answer.selectedValues.map((value) => ({
+              value,
+              label: question?.labels.get(value),
+            }));
+            if (
+              picked.some((item) => item.label && item.label !== item.value)
+            ) {
+              hasHiddenDetail = true;
+            }
+            if (answer.customText) hasHiddenDetail = true;
+            return { title, picked, customText: answer.customText };
+          });
+
+          if (expanded) {
+            // Detail on demand: stable keys next to the labels, plus the full
+            // free-text answer instead of a single truncated line.
+            const lines = rows.map((row) => {
+              const picked = row.picked
+                .map((item) =>
+                  item.label && item.label !== item.value
+                    ? `${item.label} [${item.value}]`
+                    : item.value,
+                )
+                .join(", ");
+              const parts = [
+                picked,
+                row.customText
+                  ? `(wrote) ${formatInlineText(row.customText)}`
+                  : undefined,
+              ].filter((part): part is string => Boolean(part));
+              return `${theme.fg("accent", `${formatInlineText(row.title)}: `)}${theme.fg("text", parts.join("; "))}`;
+            });
+            return new Text(lines.join("\n"), 0, 0);
+          }
+
+          // Compact: exactly one physical line per answer. TruncatedText keeps
+          // each entry inside the render width, which the host renderer
+          // requires of every array entry it receives.
+          const container = new Container();
+          for (const row of rows) {
+            const picked = row.picked
+              .map((item) => item.label ?? item.value)
+              .join(", ");
+            const parts = [
+              picked,
+              row.customText
+                ? `(wrote) ${formatInlineText(row.customText)}`
+                : undefined,
+            ].filter((part): part is string => Boolean(part));
+            container.addChild(
+              new TruncatedText(
+                `${theme.fg("accent", `${formatInlineText(row.title)}: `)}${theme.fg("text", parts.join("; "))}`,
+                0,
+                0,
+              ),
+            );
+          }
+          if (hasHiddenDetail) {
+            container.addChild(
+              new TruncatedText(
+                theme.fg("dim", globalKeyLabel("app.tools.expand", "ctrl+o")) +
+                  theme.fg("muted", " to expand"),
+                0,
+                0,
+              ),
+            );
+          }
+          return container;
         }
       }
     },
+  });
+
+  // Outside an interactive terminal the dialog cannot open, so drop the tool
+  // before the model ever sees it instead of spending a tool call to find out.
+  pi.on("session_start", (_event, ctx) => {
+    if (ctx.mode !== "tui") deactivate();
   });
 }

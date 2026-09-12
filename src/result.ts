@@ -1,7 +1,14 @@
 import type { Answer, Question } from "./schema.js";
 import { formatInlineText } from "./text.js";
 
-/** Formats submitted answers for the model without discarding multi-select Other text. */
+/**
+ * Format submitted answers for the model.
+ *
+ * The tool description promises that each option `value` is "returned to you",
+ * so the value is what leads every line; the human label follows in quotes when
+ * it adds information, and free-text answers are marked so the model can tell
+ * them apart from a picked option.
+ */
 export function summarizeAnswers(
   questions: Question[],
   answers: Answer[],
@@ -10,18 +17,20 @@ export function summarizeAnswers(
 
   return answers.map((answer) => {
     const question = questions.find((item) => item.id === answer.questionId);
-    const header = question?.header ?? answer.questionId;
     const selected = answer.selectedValues
-      .map(
-        (value) =>
-          question?.options.find((option) => option.value === value)?.label ??
-          value,
-      )
+      .map((value) => {
+        const label = question?.options.find(
+          (option) => option.value === value,
+        )?.label;
+        return label && label !== value ? `${value} ("${label}")` : value;
+      })
       .join(", ");
     const parts = [
       selected,
-      answer.customText ? formatInlineText(answer.customText) : undefined,
+      answer.customText
+        ? `(wrote) ${formatInlineText(answer.customText)}`
+        : undefined,
     ].filter((part): part is string => Boolean(part));
-    return `${header}: ${parts.join("; ")}`;
+    return `${answer.questionId}: ${parts.join("; ")}`;
   });
 }
