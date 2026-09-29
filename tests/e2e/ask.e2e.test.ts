@@ -9,6 +9,7 @@
  * in a session. The dialog then runs inside a real `TUI` (see tui-harness.ts)
  * and is driven with real terminal byte sequences.
  */
+import { stripVTControlCharacters } from "node:util";
 import { validateToolArguments } from "@earendil-works/pi-ai/compat";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
@@ -507,13 +508,19 @@ describe("e2e: the renderer's width contract", () => {
         { args: params },
       ),
     );
-    // One line per answer plus the expand hint, each inside the width.
-    expect(compact).toHaveLength(2);
+    // Full question and answer are visible without expansion, wrapped safely.
+    expect(compact.length).toBeGreaterThan(2);
     for (const line of compact) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(40);
     }
-    expect(at(compact, 0)).toContain("Both, with the");
-    expect(at(compact, 1)).toContain("to expand");
+    expect(compact.join("\n")).toContain("Both, with the");
+    expect(
+      compact
+        .map(stripVTControlCharacters)
+        .map((line) => line.trimEnd())
+        .join(""),
+    ).toContain("x".repeat(300));
+    expect(compact.join("\n")).toContain("to expand");
 
     const expanded = host.renderDetached(
       tool.renderResult(
@@ -529,8 +536,13 @@ describe("e2e: the renderer's width contract", () => {
     const expandedText = expanded.join("");
     expect(expandedText).toContain("[both-recommended]");
     expect(expandedText).toContain("(wrote)");
-    // The full free-text answer survives instead of being cut at the width.
-    expect(expanded.length).toBeGreaterThan(compact.length);
+    // Expansion adds stable keys; neither state truncates free-text answers.
+    expect(
+      expanded
+        .map(stripVTControlCharacters)
+        .map((line) => line.trimEnd())
+        .join(""),
+    ).toContain("x".repeat(300));
 
     const callRow = host.renderDetached(
       tool.renderCall(params, host.theme, {}),

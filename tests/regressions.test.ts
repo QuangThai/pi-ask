@@ -337,7 +337,7 @@ describe("result reporting", () => {
     );
   });
 
-  it("shows human labels in the compact transcript", () => {
+  it("shows the full question and answer in the default transcript", () => {
     const { tool } = loadTool();
     const lines = tool
       .renderResult(
@@ -348,9 +348,12 @@ describe("result reporting", () => {
       )
       .render(120);
 
-    expect(at(lines, 0)).toContain("Persist");
-    expect(at(lines, 0)).toContain("Tool result details");
-    expect(at(lines, 1)).toContain("to expand");
+    expect(at(lines, 0)).toContain("How should answers persist?");
+    expect(at(lines, 1)).toContain(
+      "Tool result details; (wrote) plus a sidecar file",
+    );
+    expect(lines.join("\n")).not.toContain("[details]");
+    expect(at(lines, 3)).toContain("to expand");
   });
 
   it("shows the stable keys and full free text when expanded", () => {
@@ -370,6 +373,134 @@ describe("result reporting", () => {
     expect(text).not.toContain("to expand");
   });
 
+  it("separates full question/answer pairs and keeps multi-select and Other text", () => {
+    const { tool } = loadTool();
+    const result = {
+      content: [],
+      details: {
+        version: 1,
+        status: "submitted",
+        answers: [
+          { questionId: "food", selectedValues: ["pho"] },
+          {
+            questionId: "features",
+            selectedValues: ["search", "export"],
+            customText: "Offline\nSupport",
+          },
+        ],
+      },
+    };
+    const context = {
+      args: {
+        questions: [
+          {
+            id: "food",
+            header: "Food",
+            question: "Bạn thích món ăn nào?",
+            options: [{ value: "pho", label: "Phở" }],
+          },
+          {
+            id: "features",
+            header: "Features",
+            question: "Which features do you need?",
+            options: [
+              { value: "search", label: "Search" },
+              { value: "export", label: "Export" },
+            ],
+          },
+        ],
+      },
+    };
+    const before = JSON.stringify({ result, context });
+    const text = tool
+      .renderResult(
+        result as never,
+        { expanded: false } as never,
+        theme as never,
+        context as never,
+      )
+      .render(100)
+      .map((line) => line.trimEnd())
+      .join("\n");
+    expect(text).toContain(
+      "Bạn thích món ăn nào?\nPhở\n\nWhich features do you need?\nSearch, Export; (wrote) Offline\nSupport",
+    );
+    expect(text).not.toContain("[pho]");
+    expect(JSON.stringify({ result, context })).toBe(before);
+  });
+
+  it("wraps and sanitizes full questions and answers at narrow widths", () => {
+    const { tool } = loadTool();
+    const result = {
+      content: [],
+      details: {
+        version: 1,
+        status: "submitted",
+        answers: [
+          {
+            questionId: "q",
+            selectedValues: [],
+            customText: `\u001b[2J${"Phở 日本語 ".repeat(20)}`,
+          },
+        ],
+      },
+    };
+    const context = {
+      args: {
+        questions: [
+          {
+            id: "q",
+            header: "Short",
+            question:
+              "\u001b[31mWhich approach should we use?\nPlease explain.",
+            options: [],
+          },
+        ],
+      },
+    };
+    for (const width of [12, 24, 80]) {
+      const lines = tool
+        .renderResult(
+          result as never,
+          { expanded: false } as never,
+          theme as never,
+          context as never,
+        )
+        .render(width);
+      expect(
+        lines.every(
+          (line) => visibleWidth(line) <= width && !line.includes("\n"),
+        ),
+      ).toBe(true);
+      const text = lines.join("\n");
+      expect(text).not.toContain("\u001b");
+      expect(text).not.toContain("Short");
+      const unwrapped = text.replace(/\s/g, "");
+      expect(unwrapped.match(/Phở/g)).toHaveLength(20);
+      expect(unwrapped.match(/日本語/g)).toHaveLength(20);
+      expect(text).not.toContain("to expand");
+    }
+  });
+
+  it("uses the header for older calls without question text", () => {
+    const { tool } = loadTool();
+    const text = tool
+      .renderResult(
+        submitted as never,
+        { expanded: false } as never,
+        theme as never,
+        {
+          args: {
+            questions: [{ id: "persistence", header: "Persist", options: [] }],
+          },
+        } as never,
+      )
+      .render(120)
+      .map((line) => line.trimEnd())
+      .join("\n");
+    expect(text).toContain("Persist\ndetails; (wrote) plus a sidecar file");
+  });
+
   it("falls back to raw ids when the call arguments are unavailable", () => {
     const { tool } = loadTool();
     const lines = tool
@@ -382,6 +513,6 @@ describe("result reporting", () => {
       .render(120);
 
     expect(at(lines, 0)).toContain("persistence");
-    expect(at(lines, 0)).toContain("details");
+    expect(at(lines, 1)).toContain("details");
   });
 });

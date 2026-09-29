@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Container, Text, TruncatedText } from "@earendil-works/pi-tui";
+import { Text, TruncatedText } from "@earendil-works/pi-tui";
 import { QuestionnaireComponent } from "./component.js";
 import { globalKeyLabel } from "./keys.js";
 import { summarizeAnswers } from "./result.js";
@@ -13,11 +13,11 @@ import {
   normalizeQuestions,
   validateQuestions,
 } from "./schema.js";
-import { formatInlineText } from "./text.js";
+import { formatInlineText, toWrappedText } from "./text.js";
 
 /** Minimal view of the tool arguments needed to label a stored result. */
 interface QuestionMeta {
-  header: string;
+  question: string;
   labels: Map<string, string>;
 }
 
@@ -40,6 +40,7 @@ function readQuestionMeta(args: unknown): Map<string, QuestionMeta> {
     const record = question as {
       id?: unknown;
       header?: unknown;
+      question?: unknown;
       options?: unknown;
     };
     if (typeof record.id !== "string" || !record.id) continue;
@@ -54,10 +55,12 @@ function readQuestionMeta(args: unknown): Map<string, QuestionMeta> {
       }
     }
     meta.set(record.id, {
-      header:
-        typeof record.header === "string" && record.header
-          ? record.header
-          : record.id,
+      question:
+        typeof record.question === "string" && record.question.trim()
+          ? record.question
+          : typeof record.header === "string" && record.header
+            ? record.header
+            : record.id,
       labels,
     });
   }
@@ -301,75 +304,35 @@ export default function (pi: ExtensionAPI) {
 
           const rows = details.answers.map((answer) => {
             const question = meta.get(answer.questionId);
-            const title = question?.header ?? answer.questionId;
-            const picked = answer.selectedValues.map((value) => ({
-              value,
-              label: question?.labels.get(value),
-            }));
-            if (
-              picked.some((item) => item.label && item.label !== item.value)
-            ) {
-              hasHiddenDetail = true;
-            }
-            if (answer.customText) hasHiddenDetail = true;
-            return { title, picked, customText: answer.customText };
-          });
-
-          if (expanded) {
-            // Detail on demand: stable keys next to the labels, plus the full
-            // free-text answer instead of a single truncated line.
-            const lines = rows.map((row) => {
-              const picked = row.picked
-                .map((item) =>
-                  item.label && item.label !== item.value
-                    ? `${item.label} [${item.value}]`
-                    : item.value,
-                )
-                .join(", ");
-              const parts = [
-                picked,
-                row.customText
-                  ? `(wrote) ${formatInlineText(row.customText)}`
-                  : undefined,
-              ].filter((part): part is string => Boolean(part));
-              return `${theme.fg("accent", `${formatInlineText(row.title)}: `)}${theme.fg("text", parts.join("; "))}`;
+            const title = question?.question ?? answer.questionId;
+            const picked = answer.selectedValues.map((value) => {
+              const label = question?.labels.get(value);
+              if (label && label !== value) hasHiddenDetail = true;
+              return formatInlineText(
+                expanded && label && label !== value
+                  ? `${label} [${value}]`
+                  : (label ?? value),
+              );
             });
-            return new Text(lines.join("\n"), 0, 0);
-          }
-
-          // Compact: exactly one physical line per answer. TruncatedText keeps
-          // each entry inside the render width, which the host renderer
-          // requires of every array entry it receives.
-          const container = new Container();
-          for (const row of rows) {
-            const picked = row.picked
-              .map((item) => item.label ?? item.value)
-              .join(", ");
             const parts = [
-              picked,
-              row.customText
-                ? `(wrote) ${formatInlineText(row.customText)}`
+              picked.join(", "),
+              answer.customText
+                ? `(wrote) ${toWrappedText(answer.customText)}`
                 : undefined,
             ].filter((part): part is string => Boolean(part));
-            container.addChild(
-              new TruncatedText(
-                `${theme.fg("accent", `${formatInlineText(row.title)}: `)}${theme.fg("text", parts.join("; "))}`,
-                0,
-                0,
-              ),
+            return `${theme.fg("muted", toWrappedText(title))}\n${theme.fg("text", parts.join("; "))}`;
+          });
+
+          // The decision record is readable without expanding: full question,
+          // then full answer, with one blank line between pairs. Text wraps
+          // safely to the host width rather than truncating long answers.
+          if (!expanded && hasHiddenDetail) {
+            rows.push(
+              theme.fg("dim", globalKeyLabel("app.tools.expand", "ctrl+o")) +
+                theme.fg("muted", " to expand"),
             );
           }
-          if (hasHiddenDetail) {
-            container.addChild(
-              new TruncatedText(
-                theme.fg("dim", globalKeyLabel("app.tools.expand", "ctrl+o")) +
-                  theme.fg("muted", " to expand"),
-                0,
-                0,
-              ),
-            );
-          }
-          return container;
+          return new Text(rows.join("\n\n"), 0, 0);
         }
       }
     },

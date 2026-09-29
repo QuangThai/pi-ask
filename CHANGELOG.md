@@ -2,6 +2,16 @@
 
 All notable changes to this package are documented here.
 
+## [0.2.1] - 2026-09-29
+
+### Changed
+
+- The result transcript shows each full question above its selected answer labels and full Other text, wrapping long content in the default view. Expansion still adds stable option values. This is display-only: questionnaire interaction, validation, result data, and model-facing output are unchanged.
+
+### Added
+
+- Regression coverage for full question/answer pairs, multi-select with Other text, narrow-width Unicode wrapping, sanitized terminal text, and legacy-call fallbacks.
+
 ## [0.2.0] - 2026-09-12
 
 ### Fixed

@@ -501,7 +501,7 @@ describe("tool integration helpers", () => {
     expect(text).toContain("Support CSV");
   });
 
-  it("renders one line per answer and never exceeds the given width", () => {
+  it("wraps full answers into physical lines without exceeding the given width", () => {
     let definition:
       | {
           renderResult: (...args: never[]) => {
@@ -546,18 +546,17 @@ describe("tool integration helpers", () => {
         )
         .render(width) ?? [];
 
-    // Regression: previously every answer was joined into a single entry with
-    // embedded newlines, which the host measured as one very wide line.
-    // One line per answer, plus the "expand" hint because the free-text answer
-    // does not fit.
-    expect(lines).toHaveLength(answers.length + 1);
+    // Wrapping must preserve all content while still emitting one entry per
+    // physical terminal line (never embedded newlines or over-wide entries).
+    expect(lines.length).toBeGreaterThan(answers.length);
     for (const line of lines) {
       expect(line).not.toContain("\n");
       expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
     expect(lines[0]).toContain("perf-def");
-    expect(lines[3]).toContain("mutate");
-    expect(at(lines, 4)).toContain("to expand");
+    expect(lines.join("\n")).toContain("mutate");
+    expect(lines.join("")).toContain("x".repeat(200));
+    expect(lines.join("\n")).not.toContain("to expand");
   });
 
   it("renders an explicit skipped summary for empty submitted answers", () => {

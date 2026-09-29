@@ -168,10 +168,11 @@ persistence: details ("Tool result details")
 ui: review ("Review tab"), custom ("Custom answer"); (wrote) plus a sidecar file
 ```
 
-The transcript the *user* sees is the mirror image — the question header and
-the human labels, one line per answer. Press the tool-expand key (`Ctrl+O` by
-default, `app.tools.expand`) to see the stable values and the full text of a
-long free-text answer.
+The transcript the *user* sees shows the full question followed by the selected
+human labels and any free-text answer, with a blank line between question/answer
+pairs. Long text wraps without requiring expansion. Press the tool-expand key
+(`Ctrl+O` by default, `app.tools.expand`) to also see the stable option values.
+Older calls without question text fall back to the header or question ID.
 
 ## Architecture
 
