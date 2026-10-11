@@ -299,7 +299,11 @@ export default function (pi: ExtensionAPI) {
             );
           }
 
-          const meta = readQuestionMeta(context.args);
+          // The render context carries the raw model arguments, not the
+          // prepareArguments() output that execute() saw. Ids and values the
+          // model left out were derived there, so derive them the same way
+          // here or the answers' keys match nothing.
+          const meta = readQuestionMeta(normalizeQuestionArgs(context.args));
           let hasHiddenDetail = false;
 
           const rows = details.answers.map((answer) => {

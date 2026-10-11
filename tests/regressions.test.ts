@@ -482,6 +482,64 @@ describe("result reporting", () => {
     }
   });
 
+  it("shows the question and label when the model omitted ids and values", () => {
+    const { tool } = loadTool();
+    // What the model sends and what Pi hands renderResult as context.args.
+    const raw = {
+      questions: [
+        {
+          header: "Defaults",
+          question: "Which defaults should we ship?",
+          options: [
+            { label: "Both, recommended marked 🚀", recommended: true },
+            { label: "Neither" },
+          ],
+        },
+      ],
+    };
+    // execute() ran on the prepared arguments, so the answer carries derived keys.
+    const prepared = tool.prepareArguments(raw) as { questions: Question[] };
+    const question = prepared.questions[0];
+    const option = question?.options[0];
+    expect(question?.id).toBeTruthy();
+    expect(option?.value).toBeTruthy();
+    const result = {
+      content: [],
+      details: {
+        version: 1,
+        status: "submitted",
+        answers: [
+          {
+            questionId: question?.id,
+            selectedValues: [option?.value],
+          },
+        ],
+      },
+    };
+    const render = (expanded: boolean) =>
+      tool
+        .renderResult(
+          result as never,
+          { expanded } as never,
+          theme as never,
+          { args: raw } as never,
+        )
+        .render(120)
+        .map((line) => line.trimEnd())
+        .join("\n");
+
+    const collapsed = render(false);
+    expect(collapsed).toContain(
+      "Which defaults should we ship?\nBoth, recommended marked 🚀",
+    );
+    expect(collapsed).toContain("to expand");
+    expect(collapsed).not.toContain(question?.id ?? "?");
+    expect(render(true)).toContain(
+      `Both, recommended marked 🚀 [${option?.value}]`,
+    );
+    expect(JSON.stringify(raw)).not.toContain('"id"');
+  });
+
   it("uses the header for older calls without question text", () => {
     const { tool } = loadTool();
     const text = tool
