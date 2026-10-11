@@ -310,8 +310,10 @@ export class QuestionnaireComponent implements Focusable {
 
     const renderWidth = Math.max(1, width);
     const lines: string[] = [];
+    // A row too wide for the terminal ends in "…", so a cut label or hint
+    // reads as cut rather than complete. Rows that fit are kept as built.
     const add = (text = "") =>
-      lines.push(truncateToWidth(text, renderWidth, ""));
+      lines.push(truncateToWidth(text, renderWidth, "…"));
     const addWrapped = (text: string, indent = "") => {
       const max = Math.max(1, renderWidth - visibleWidth(indent));
       for (const line of wrapTextWithAnsi(text, max)) {

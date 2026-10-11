@@ -4,6 +4,15 @@ import { QuestionnaireComponent } from "../src/component.js";
 import type { Question } from "../src/schema.js";
 import { at } from "./helpers.js";
 
+/** Drop SGR colour codes; split on ESC so no control character sits in a regex. */
+const stripAnsi = (text: string) =>
+  text
+    .split("\u001b")
+    .map((part, index) =>
+      index === 0 ? part : part.replace(/^\[[0-9;]*m/, ""),
+    )
+    .join("");
+
 /** Terminal control sequences expected by pi-tui's matchesKey */
 const KEYS = {
   enter: "\r",
@@ -574,6 +583,68 @@ describe("QuestionnaireComponent", () => {
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
       }
     }
+  });
+
+  it("ends a row too wide for a narrow terminal with an ellipsis", () => {
+    const longQuestions: Question[] = [
+      {
+        id: "defaults",
+        header: "Defaults",
+        question: "Which defaults?",
+        multiSelect: false,
+        options: [
+          {
+            value: "both",
+            label: "Both, with the recommended option marked 🚀",
+            recommended: true,
+          },
+          { value: "neither", label: "Neither" },
+        ],
+      },
+    ];
+    const component = new QuestionnaireComponent(
+      longQuestions,
+      tui as never,
+      theme as never,
+      () => {},
+    );
+    const lines = component.render(20);
+    const plain = lines.map(stripAnsi);
+    for (const line of lines)
+      expect(visibleWidth(line)).toBeLessThanOrEqual(20);
+
+    // The label, the choice hint, the Other row and the key hint are cut.
+    expect(plain).toContain("> Both, with the re…");
+    expect(plain).toContain(" Choose one — Space…");
+    expect(plain).toContain("  Other — add your …");
+    expect(plain).toContain(" Enter choose  •  E…");
+    // A row that fits is not marked: the short option and the question.
+    expect(plain).toContain("  Neither");
+    expect(plain).toContain(" Which defaults?");
+  });
+
+  it("leaves rows that fit exactly as built", () => {
+    const ansiTheme = {
+      fg: (_color: string, text: string) => `\x1b[36m${text}\x1b[39m`,
+      bg: (_color: string, text: string) => `\x1b[44m${text}\x1b[49m`,
+      bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
+    };
+    const component = new QuestionnaireComponent(
+      questions,
+      tui as never,
+      ansiTheme as never,
+      () => {},
+    );
+
+    const narrow = component.render(20);
+    // The full-width rule fits exactly, so no reset or ellipsis is appended.
+    expect(narrow[0]).toBe(`\x1b[36m${"─".repeat(20)}\x1b[39m`);
+
+    const wide = component.render(120);
+    expect(wide.some((line) => line.includes("…"))).toBe(false);
+    expect(wide).toContain(
+      `\x1b[36m> \x1b[39m\x1b[36mTool details\x1b[36m (Recommended)\x1b[39m\x1b[39m`,
+    );
   });
 
   it("navigates away from and dismisses the review tab", () => {
