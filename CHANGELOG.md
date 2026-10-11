@@ -2,6 +2,20 @@
 
 All notable changes to this package are documented here.
 
+## [0.2.3] - 2026-10-11
+
+### Fixed
+
+- On a narrow terminal, a dialog row too wide to fit now ends in `…` instead of stopping mid-word with no sign it was cut: an option label (`> Both, with the re…`), the `Choose one — Space…` hint, the `Other — add your …` row, and the key hints on the question and review screens. Rows that fit are rendered exactly as before, and descriptions and question text still wrap. Display-only: the dialog, validation, result data, and model-facing output are unchanged.
+
+### Changed
+
+- Development dependencies moved to Pi 1.1.0 (`@earendil-works/pi-coding-agent`, `pi-tui`, `pi-ai`); peer dependencies stay `*`. The real-TUI test harness builds `TuiMainScreen`, since `TUI` is now an interface in pi-tui 1.1.0, and its recording terminal implements `setProgramStatus`.
+
+### Added
+
+- Tests for the ellipsis on a cut row at 20 columns and for rows that fit staying byte-identical.
+
 ## [0.2.2] - 2026-10-11
 
 ### Fixed
