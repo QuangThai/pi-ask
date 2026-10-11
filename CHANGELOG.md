@@ -2,6 +2,16 @@
 
 All notable changes to this package are documented here.
 
+## [0.2.2] - 2026-10-11
+
+### Fixed
+
+- The result transcript showed `question-1` and the option's derived value (`both-with-the-recommended-option-marked`) instead of the question and the label the user picked, and offered no expand hint, whenever the model left out the optional `id` and `value` fields. Pi hands `renderResult` the raw model arguments, while the answers carry the keys `prepareArguments()` derived; the transcript now derives them the same way. Display-only: the dialog, validation, result data, and model-facing output are unchanged.
+
+### Added
+
+- Regression coverage for a call whose questions and options carry no `id` or `value`.
+
 ## [0.2.1] - 2026-09-29
 
 ### Changed
