@@ -2,7 +2,8 @@
  * A real pi TUI, driven from a test.
  *
  * The point of this harness is that nothing about the rendering or input path
- * is simulated: it builds the actual `TUI` from `@earendil-works/pi-tui`, the
+ * is simulated: it builds the actual `TuiMainScreen` from
+ * `@earendil-works/pi-tui` (the `TUI` pi runs in its regular screen mode), the
  * actual `Theme` from the theme file pi ships, and the actual
  * `KeybindingsManager`, then mounts the component exactly the way pi's
  * interactive mode mounts an extension component in `showExtensionCustom()`
@@ -23,8 +24,9 @@ import {
   Editor,
   KeybindingsManager,
   type Terminal,
-  TUI,
+  type TUI,
   TUI_KEYBINDINGS,
+  TuiMainScreen,
 } from "@earendil-works/pi-tui";
 
 export interface ThemeJson {
@@ -120,6 +122,7 @@ class RecordingTerminal implements Terminal {
   clearScreen(): void {}
   setTitle(): void {}
   setProgress(): void {}
+  setProgramStatus(): void {}
 
   send(data: string): void {
     if (!this.input) throw new Error("Terminal is not started");
@@ -167,7 +170,7 @@ export function createHost(
   userKeybindings: Record<string, string | string[]> = {},
 ): Host {
   const terminal = new RecordingTerminal(width, height);
-  const tui = new TUI(terminal);
+  const tui: TUI = new TuiMainScreen(terminal);
   const theme = loadPiTheme();
   const keybindings = new KeybindingsManager(
     TUI_KEYBINDINGS,
